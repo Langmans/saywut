@@ -1,0 +1,11 @@
+# How a Dutch speaker introduces themselves. {name} marks the name and must
+# come last. Phrases are matched without regard to case.
+phrases = [
+    "ik ben {name}",
+    "mijn naam is {name}",
+    "ik heet {name}",
+    "dit is {name}",
+]
+
+# Lowercase words allowed inside a name: "Anna de Vries", "Jan van der Berg".
+particles = ["de", "van", "der", "den", "ter", "te", "het", "'t"]

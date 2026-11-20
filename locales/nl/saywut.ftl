@@ -20,6 +20,21 @@ speakers-list-line = { $n }  { $label }  { $lines ->
    *[other] { $lines } regels
 }
 
+# A name heard for speaker $n; confirm with `saywut speakers rename`.
+speakers-suggest-line = { $n }  { $name }  ← "{ $text }"
+speakers-suggest-none = Geen namen gehoord.
+
+error-read-profiles = Kon stemprofielen { $path } niet lezen: { $reason }
+error-speaker-silent = Spreker { $n } zegt niets in dit transcript.
+error-profile-unknown = Er is geen stemprofiel van { $name }.
+profiles-none = Geen stemprofielen opgeslagen.
+profiles-list-line = { $name }  ({ $recordings ->
+    [one] 1 opname
+   *[other] { $recordings } opnames
+})
+profiles-added = Stem van { $name } opgeslagen.
+profiles-deleted = Stemprofiel van { $name } verwijderd.
+
 error-model-unknown = Onbekend model { $id }. Zie: saywut models list
 error-model-missing = Model { $id } is nog niet gedownload. Voer uit: saywut models fetch { $id }
 error-model-corrupt = Modelbestand { $path } is beschadigd ({ $reason }). Voer uit: saywut models fetch { $id }

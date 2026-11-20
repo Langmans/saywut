@@ -1,0 +1,17 @@
+[package]
+name = "saywut-naming"
+description = "Per-language phrases for recognizing speaker names in Saywut."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+saywut-core = { path = "../saywut-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.2.1"
+
+[lints]
+workspace = true

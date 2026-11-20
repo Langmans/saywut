@@ -8,6 +8,10 @@ design and phases; [README.md](README.md) has build requirements.
 - `crates/saywut-core`: pure logic and the ports (traits). No OS or I/O
   beyond what is needed to parse and format.
 - `crates/saywut-i18n`: Fluent localization; strings live in `locales/<tag>/`.
+- `crates/saywut-naming`: phrases that introduce a speaker's name, one file
+  per speech language in `data/naming/`.
+- `crates/saywut-models`: the model manifest (`models.toml`) and verified
+  downloads.
 - `crates/capture-*`, engine and diarizer crates: thin adapters behind the
   core traits.
 - `crates/saywut-cli`: the `saywut` binary. Keep `main.rs` a one-liner and

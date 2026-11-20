@@ -279,6 +279,7 @@ fn failing_stdout() {
 fn system_defaults() {
     assert!(!system_locale().is_empty());
     assert!(default_model_dir().ends_with(Path::new("saywut").join("models")));
+    assert!(default_profiles_file().ends_with(Path::new("saywut").join("voice-profiles.json")));
 }
 
 // --- whisper and models ---
@@ -383,6 +384,178 @@ fn speakers_list_rename_merge() {
     assert_eq!(speakers_cmd(&["list", f]).out, "2  Anna  3 regels\n");
     let t = Transcript::from_json(&fs::read_to_string(&file).unwrap()).unwrap();
     assert!(t.segments.iter().all(|s| s.speaker == Some(SpeakerId(1))));
+}
+
+#[test]
+fn speakers_suggest_names_heard() {
+    let dir = Scratch::new("suggest");
+    let file = dir.script(
+        r#"{
+            "version": 1,
+            "language": "nl",
+            "speakers": [{"id": 0, "name": "Ruben"}, {"id": 1}],
+            "segments": [
+                {"start_ms": 0, "end_ms": 900, "speaker": 0, "text": "Ik ben Ruben."},
+                {"start_ms": 1000, "end_ms": 1800, "speaker": 1, "text": " Hoi, ik ben Anna de Vries. "}
+            ]
+        }"#,
+    );
+    let r = speakers_cmd(&["suggest", s(&file)]);
+    assert_eq!(
+        r.out,
+        "2  Anna de Vries  ← \"Hoi, ik ben Anna de Vries.\"\n"
+    );
+    // Suggesting changes nothing.
+    assert!(
+        speakers_cmd(&["list", s(&file)])
+            .out
+            .contains("2  Spreker 2")
+    );
+
+    let quiet = dir.script(TWO_SPEAKERS);
+    assert_eq!(
+        speakers_cmd(&["suggest", s(&quiet)]).out,
+        "Geen namen gehoord.\n"
+    );
+    let r = speakers_cmd(&["suggest", s(&dir.path("missing.json"))]);
+    assert_eq!(r.code, 1);
+}
+
+// --- voice profiles ---
+
+fn profiles_cmd(store: &Path, args: &[&str]) -> Run {
+    let models = repo().join("models");
+    saywut(
+        &[
+            &[
+                "--locale",
+                "nl",
+                "--model-dir",
+                s(&models),
+                "--profiles-file",
+                s(store),
+            ],
+            args,
+        ]
+        .concat(),
+    )
+}
+
+/// Learn David's voice from en-dialogue, then recognize him in a fresh
+/// diarization of the same clip; delete him again.
+#[test]
+fn profiles_learn_recognize_delete() {
+    let dir = Scratch::new("profiles");
+    let store = dir.path("profiles").join("voice-profiles.json");
+    let clip = repo().join("testdata/tts/en-dialogue");
+    let (wav, json) = (clip.with_extension("wav"), clip.with_extension("json"));
+
+    assert_eq!(
+        profiles_cmd(&store, &["profiles", "list"]).out,
+        "Geen stemprofielen opgeslagen.\n"
+    );
+    let add = ["profiles", "add", "David", s(&wav), s(&json), "1"];
+    let r = profiles_cmd(&store, &add);
+    assert_eq!(
+        (r.code, r.out.as_str()),
+        (0, "Stem van David opgeslagen.\n"),
+        "{}",
+        r.err
+    );
+    profiles_cmd(&store, &add);
+    assert_eq!(
+        profiles_cmd(&store, &["profiles", "list"]).out,
+        "David  (2 opnames)\n"
+    );
+
+    // The fake engine replays the reference text; diarization and
+    // recognition are real.
+    let r = profiles_cmd(
+        &store,
+        &[
+            "transcribe",
+            s(&wav),
+            "--engine",
+            "fake",
+            "--fake-script",
+            s(&json),
+            "-f",
+            "txt",
+            "--diarize",
+            "--recognize",
+        ],
+    );
+    assert_eq!(r.code, 0, "{}", r.err);
+    let lines: Vec<&str> = r.out.lines().collect();
+    assert!(
+        lines[0].starts_with("[00:00:00] David: Good morning"),
+        "{}",
+        r.out
+    );
+    assert!(lines[1].contains("Spreker 2: Almost"), "{}", r.out);
+
+    let r = profiles_cmd(&store, &["profiles", "delete", "David"]);
+    assert_eq!(r.out, "Stemprofiel van David verwijderd.\n");
+    let r = profiles_cmd(&store, &["profiles", "delete", "David"]);
+    assert_eq!(
+        (r.code, r.err.as_str()),
+        (1, "Er is geen stemprofiel van David.\n")
+    );
+}
+
+#[test]
+fn profiles_errors() {
+    let dir = Scratch::new("profiles-errors");
+    let store = dir.path("voice-profiles.json");
+    let wav = dir.wav_at(8_000);
+    let transcript = dir.script(TWO_SPEAKERS);
+    let (w, t) = (s(&wav), s(&transcript));
+
+    // Speaker 3 says nothing.
+    let r = profiles_cmd(&store, &["profiles", "add", "X", w, t, "3"]);
+    assert_eq!(r.err, "Spreker 3 zegt niets in dit transcript.\n");
+    // 8 kHz audio cannot be embedded.
+    let r = profiles_cmd(&store, &["profiles", "add", "X", w, t, "2"]);
+    assert!(
+        r.err
+            .starts_with("Sprekerherkenning mislukt: needs 16000 Hz"),
+        "{}",
+        r.err
+    );
+    // Missing audio.
+    let r = profiles_cmd(&store, &["profiles", "add", "X", "none.wav", t, "2"]);
+    assert!(r.err.starts_with("Kon audiobestand none.wav"), "{}", r.err);
+    assert!(!store.exists(), "nothing stored on errors");
+
+    // A store that cannot be read (a folder) or is damaged is reported, also
+    // by transcribe --recognize.
+    let r = profiles_cmd(&dir.0, &["profiles", "list"]);
+    assert!(r.err.starts_with("Kon stemprofielen "), "{}", r.err);
+    fs::write(&store, "{").unwrap();
+    let r = profiles_cmd(&store, &["profiles", "list"]);
+    assert!(r.err.starts_with("Kon stemprofielen "), "{}", r.err);
+    let r = profiles_cmd(
+        &store,
+        &[
+            "transcribe",
+            s(&dir.wav()),
+            "--engine",
+            "fake",
+            "--diarize",
+            "--recognize",
+        ],
+    );
+    assert!(r.err.starts_with("Kon stemprofielen "), "{}", r.err);
+
+    // The store cannot be written: its folder is a file.
+    let blocked = dir.path("blocked");
+    fs::write(&blocked, "").unwrap();
+    let in_file = blocked.join("voice-profiles.json");
+    let clip = repo().join("testdata/tts/en-dialogue");
+    let (cw, cj) = (clip.with_extension("wav"), clip.with_extension("json"));
+    let r = profiles_cmd(&in_file, &["profiles", "add", "X", s(&cw), s(&cj), "1"]);
+    assert_eq!(r.code, 1);
+    assert!(r.err.starts_with("Kon "), "{}", r.err);
 }
 
 #[test]

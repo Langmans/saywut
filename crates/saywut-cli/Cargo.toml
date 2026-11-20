@@ -21,6 +21,7 @@ saywut-core = { path = "../saywut-core" }
 saywut-diarize-sherpa = { path = "../diarize-sherpa" }
 saywut-i18n = { path = "../saywut-i18n" }
 saywut-models = { path = "../saywut-models" }
+saywut-naming = { path = "../saywut-naming" }
 sys-locale = "0.3.2"
 
 [features]

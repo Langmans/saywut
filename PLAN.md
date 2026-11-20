@@ -267,3 +267,23 @@ Looked at for ideas, no code taken:
 - Install a German voice and a second Dutch voice (Settings > Time & language >
   Speech), so `tools/tts-clips.ps1` can also make `de` clips and a Dutch
   dialogue.
+- Diarization with three or more real voices: the TTS clips cannot show it
+  (two male Microsoft voices merge into one speaker).
+- Voice profiles on real voices: does `transcribe --recognize` name the right
+  people, and is `MATCH_THRESHOLD` (0.6) right for CAM++ on real speech?
+
+## Open work
+
+Phases 2 and 3 run in the CLI (whisper, diarization, speaker editing, name
+suggestions, voice profiles). Before phase 4:
+
+- CI needs committed, freely licensed speech clips (Common Voice nl/en/de)
+  with reference transcripts; the model tests use the git-ignored TTS clips
+  and fail on CI runners until then.
+- Resampling: whisper and diarization accept only 16 kHz input.
+- Fuzz targets for the parsers (transcript JSON, manifest, naming files,
+  voice profiles) and a size limit on files read whole.
+- The whisper model tests take ~11 s normally but minutes under
+  `cargo llvm-cov`; find out why.
+- The scratch-dir test helper is duplicated in three crates (`tempfile`).
+- Measure whisper large-v3-turbo next to base (download on approval).

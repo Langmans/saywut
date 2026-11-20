@@ -5,10 +5,14 @@
 //!   transcript JSON given with `--fake-script`.
 //! - `saywut models list|fetch`: the models from the manifest and verified
 //!   downloads of them.
-//! - `saywut speakers list|rename|merge`: edit the speakers of a transcript.
+//! - `saywut speakers list|suggest|rename|merge`: edit the speakers of a
+//!   transcript.
+//! - `saywut profiles list|add|delete`: local voice profiles, used by
+//!   `transcribe --diarize --recognize` to name known voices.
 //!
 //! Messages are localized; clap's own help and usage text is English.
 
+mod profiles;
 mod speakers;
 
 use std::{
@@ -21,13 +25,14 @@ use std::{
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use saywut_asr_whisper::WhisperAsr;
 use saywut_core::{
-    asr::{AsrEngine, AsrError, FakeAsr},
-    diarize::Diarizer,
+    asr::{AsrEngine, AsrError, Audio, FakeAsr},
+    diarize::{DiarizeError, Diarizer},
     export,
     pipeline::{apply_diarization, transcribe_file},
+    profiles::{MATCH_THRESHOLD, VoiceProfiles, recognize},
     transcript::{SpeakerId, Transcript},
 };
-use saywut_diarize_sherpa::SherpaDiarizer;
+use saywut_diarize_sherpa::{SherpaDiarizer, SherpaEmbedder};
 use saywut_i18n::{FALLBACK, FluentValue, Localizer};
 use saywut_models::{Manifest, Model, ModelError, Opener};
 
@@ -55,6 +60,11 @@ struct Cli {
     #[arg(long, global = true, env = "SAYWUT_MODEL_DIR")]
     model_dir: Option<PathBuf>,
 
+    /// The voice profiles file. Defaults to voice-profiles.json in the
+    /// user's local data directory.
+    #[arg(long, global = true, env = "SAYWUT_PROFILES")]
+    profiles_file: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -69,6 +79,9 @@ enum Command {
     /// Show, name or merge the speakers of a transcript JSON (edited in place).
     #[command(subcommand)]
     Speakers(speakers::SpeakersCommand),
+    /// Manage the local voice profiles (voice embeddings, no audio).
+    #[command(subcommand)]
+    Profiles(profiles::ProfilesCommand),
 }
 
 #[derive(Subcommand)]
@@ -119,6 +132,10 @@ struct TranscribeArgs {
     /// Number of speakers, if known; otherwise they are found automatically.
     #[arg(long, requires = "diarize", value_parser = clap::value_parser!(u32).range(1..))]
     speakers: Option<u32>,
+
+    /// Name speakers whose voice matches a stored voice profile.
+    #[arg(long, requires = "diarize")]
+    recognize: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -162,13 +179,15 @@ where
     let locale = cli.locale.unwrap_or_else(system_locale);
     let loc = Localizer::new(&locale);
     let model_dir = cli.model_dir.unwrap_or_else(default_model_dir);
+    let store = cli.profiles_file.unwrap_or_else(default_profiles_file);
     let result = match cli.command {
-        Command::Transcribe(args) => transcribe(&args, &loc, &model_dir, out),
+        Command::Transcribe(args) => transcribe(&args, &loc, &model_dir, &store, out),
         Command::Models(ModelsCommand::List) => list_models(&loc, &model_dir, out),
         Command::Models(ModelsCommand::Fetch { id }) => {
             fetch_model(&id, &loc, &model_dir, open, out)
         }
         Command::Speakers(cmd) => speakers::run(cmd, &loc, out),
+        Command::Profiles(cmd) => profiles::run(cmd, &store, &model_dir, &loc, out),
     };
     match result {
         Ok(()) => 0,
@@ -183,8 +202,18 @@ fn system_locale() -> String {
     sys_locale::get_locale().unwrap_or(FALLBACK.to_owned())
 }
 
+/// Saywut's folder in the user's local data directory (the working
+/// directory if the system has none).
+fn data_dir() -> PathBuf {
+    dirs::data_local_dir().map_or(PathBuf::new(), |d| d.join("saywut"))
+}
+
 fn default_model_dir() -> PathBuf {
-    dirs::data_local_dir().map_or(PathBuf::from("models"), |d| d.join("saywut").join("models"))
+    data_dir().join("models")
+}
+
+fn default_profiles_file() -> PathBuf {
+    data_dir().join("voice-profiles.json")
 }
 
 /// "Speaker 1" etc. for a speaker without a name; ids count from 0, labels
@@ -279,6 +308,7 @@ fn transcribe(
     args: &TranscribeArgs,
     loc: &Localizer,
     model_dir: &Path,
+    profiles_file: &Path,
     out: &mut dyn Write,
 ) -> Result<(), String> {
     let audio = saywut_capture_file::read_wav(&args.input).map_err(|e| {
@@ -297,10 +327,19 @@ fn transcribe(
     if args.diarize {
         let (_, segmentation) = usable_model(SEGMENTATION_MODEL, loc, model_dir)?;
         let (_, embedding) = usable_model(EMBEDDING_MODEL, loc, model_dir)?;
-        let turns = SherpaDiarizer::load(&segmentation, &embedding, args.speakers)
-            .and_then(|mut diarizer| diarizer.diarize(&audio))
-            .map_err(|e| loc.message("error-diarize", &[("reason", e.0.into())]))?;
-        apply_diarization(&mut transcript, turns);
+        let profiles = if args.recognize {
+            Some(profiles::load(profiles_file, loc)?)
+        } else {
+            None
+        };
+        label_speakers(
+            &mut transcript,
+            &audio,
+            args.speakers,
+            (&segmentation, &embedding),
+            profiles.as_ref(),
+        )
+        .map_err(|e| loc.message("error-diarize", &[("reason", e.0.into())]))?;
     }
 
     let fallback = |id: SpeakerId| speaker_label(loc, id);
@@ -316,6 +355,31 @@ fn transcribe(
         None => (out.write_all(text.as_bytes()), Path::new("-")),
     };
     write_result(result, target, loc)
+}
+
+/// Diarizes `audio` into `transcript` and, given profiles, names the voices
+/// it knows.
+fn label_speakers(
+    transcript: &mut Transcript,
+    audio: &Audio,
+    speakers: Option<u32>,
+    (segmentation, embedding): (&Path, &Path),
+    profiles: Option<&VoiceProfiles>,
+) -> Result<(), DiarizeError> {
+    let turns = SherpaDiarizer::load(segmentation, embedding, speakers)?.diarize(audio)?;
+    apply_diarization(transcript, turns);
+    if let Some(profiles) = profiles {
+        let mut embedder = SherpaEmbedder::load(embedding)?;
+        recognize(
+            transcript,
+            audio,
+            &mut embedder,
+            profiles,
+            EMBEDDING_MODEL,
+            MATCH_THRESHOLD,
+        )?;
+    }
+    Ok(())
 }
 
 fn write_result(result: std::io::Result<()>, target: &Path, loc: &Localizer) -> Result<(), String> {

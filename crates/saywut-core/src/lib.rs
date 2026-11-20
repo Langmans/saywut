@@ -7,6 +7,8 @@ pub mod asr;
 pub mod diarize;
 pub mod export;
 pub mod level;
+pub mod naming;
 pub mod pipeline;
+pub mod profiles;
 pub mod transcript;
 pub mod wer;

@@ -1093,6 +1093,7 @@ dependencies = [
  "saywut-diarize-sherpa",
  "saywut-i18n",
  "saywut-models",
+ "saywut-naming",
  "sys-locale",
 ]
 
@@ -1131,6 +1132,15 @@ dependencies = [
  "sha2 0.11.1",
  "toml",
  "ureq 3.5.2",
+]
+
+[[package]]
+name = "saywut-naming"
+version = "0.1.0"
+dependencies = [
+ "saywut-core",
+ "serde",
+ "toml",
 ]
 
 [[package]]

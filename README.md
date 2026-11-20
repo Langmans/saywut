@@ -64,6 +64,36 @@ flowchart LR
     classDef planned stroke-dasharray: 5 5
 ```
 
+## Using the CLI
+
+The desktop app is not there yet; the `saywut` command line is.
+
+```sh
+# Download and verify the models (sizes in `saywut models list`).
+saywut models fetch whisper-base
+saywut models fetch pyannote-segmentation-3
+saywut models fetch campplus-voxceleb
+
+# Transcribe a 16 kHz WAV with speaker labels; json, srt, vtt or txt.
+saywut transcribe meeting.wav -l nl --diarize -f json -o meeting.json
+
+# Name the speakers: names heard ("ik ben Anna") are suggested.
+saywut speakers list meeting.json
+saywut speakers suggest meeting.json
+saywut speakers rename meeting.json 2 "Anna"
+saywut speakers merge meeting.json 3 2      # one person split in two
+
+# Optional: remember a voice and name it automatically next time.
+saywut profiles add "Anna" meeting.wav meeting.json 2
+saywut transcribe next.wav -l nl --diarize --recognize -f txt
+saywut profiles delete "Anna"
+```
+
+Voice profiles store a voice embedding (a vector computed from speech), not
+audio, in `voice-profiles.json` in your local data folder. They are still
+biometric data: created only by `profiles add`, never uploaded, and deleted
+per name.
+
 ## System requirements
 
 Targets, not yet measured; the spike (phase 1) will confirm or adjust them.

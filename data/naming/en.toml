@@ -1,0 +1,12 @@
+# How an English speaker introduces themselves. {name} marks the name and
+# must come last. Phrases are matched without regard to case.
+phrases = [
+    "i'm {name}",
+    "i am {name}",
+    "my name is {name}",
+    "this is {name}",
+    "call me {name}",
+]
+
+# Lowercase words allowed inside a name.
+particles = ["de", "van", "von", "da", "di", "le", "la"]

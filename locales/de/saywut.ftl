@@ -20,6 +20,21 @@ speakers-list-line = { $n }  { $label }  { $lines ->
    *[other] { $lines } Zeilen
 }
 
+# A name heard for speaker $n; confirm with `saywut speakers rename`.
+speakers-suggest-line = { $n }  { $name }  ← "{ $text }"
+speakers-suggest-none = Keine Namen gehört.
+
+error-read-profiles = Stimmprofile { $path } konnten nicht gelesen werden: { $reason }
+error-speaker-silent = Sprecher { $n } sagt in diesem Transkript nichts.
+error-profile-unknown = Es gibt kein Stimmprofil für { $name }.
+profiles-none = Keine Stimmprofile gespeichert.
+profiles-list-line = { $name }  ({ $recordings ->
+    [one] 1 Aufnahme
+   *[other] { $recordings } Aufnahmen
+})
+profiles-added = Stimme von { $name } gespeichert.
+profiles-deleted = Stimmprofil von { $name } gelöscht.
+
 error-model-unknown = Unbekanntes Modell { $id }. Siehe: saywut models list
 error-model-missing = Modell { $id } ist noch nicht heruntergeladen. Ausführen: saywut models fetch { $id }
 error-model-corrupt = Modelldatei { $path } ist beschädigt ({ $reason }). Ausführen: saywut models fetch { $id }

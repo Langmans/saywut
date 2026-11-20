@@ -1,4 +1,4 @@
-//! `saywut speakers list|rename|merge <transcript.json>`.
+//! `saywut speakers list|suggest|rename|merge <transcript.json>`.
 //!
 //! Speakers are addressed by the number in their default label ("Speaker 2"
 //! is 2), which is their id plus one. Edits rewrite the file through a
@@ -8,13 +8,16 @@
 use std::{fs, io::Write, path::Path};
 
 use clap::Subcommand;
-use saywut_core::transcript::{EditError, SpeakerId, Transcript};
+use saywut_core::{
+    naming::suggest_names,
+    transcript::{EditError, SpeakerId, Transcript},
+};
 use saywut_i18n::Localizer;
 
 use super::{path_value, speaker_label, write_result};
 
 /// Speaker numbers as shown to the user start at 1.
-fn number() -> clap::builder::RangedI64ValueParser<u32> {
+pub(crate) fn number() -> clap::builder::RangedI64ValueParser<u32> {
     clap::value_parser!(u32).range(1..)
 }
 
@@ -22,6 +25,12 @@ fn number() -> clap::builder::RangedI64ValueParser<u32> {
 pub(crate) enum SpeakersCommand {
     /// Show the speakers with their number, name and number of lines.
     List {
+        /// Transcript JSON.
+        file: std::path::PathBuf,
+    },
+    /// Show names heard in the transcript ("ik ben Anna", "I'm Tom") for
+    /// unnamed speakers. Nothing is changed; confirm one with `rename`.
+    Suggest {
         /// Transcript JSON.
         file: std::path::PathBuf,
     },
@@ -48,11 +57,11 @@ pub(crate) enum SpeakersCommand {
     },
 }
 
-fn id(number: u32) -> SpeakerId {
+pub(crate) fn id(number: u32) -> SpeakerId {
     SpeakerId(number - 1)
 }
 
-fn load(path: &Path, loc: &Localizer) -> Result<Transcript, String> {
+pub(crate) fn load(path: &Path, loc: &Localizer) -> Result<Transcript, String> {
     fs::read_to_string(path)
         .map_err(|e| e.to_string())
         .and_then(|json| Transcript::from_json(&json).map_err(|e| e.to_string()))
@@ -110,6 +119,28 @@ pub(crate) fn run(
                         ("n", (speaker.id.0 + 1).into()),
                         ("label", label.into()),
                         ("lines", lines.into()),
+                    ],
+                ));
+                text.push('\n');
+            }
+            write_result(out.write_all(text.as_bytes()), Path::new("-"), loc)
+        }
+        SpeakersCommand::Suggest { file } => {
+            let t = load(&file, loc)?;
+            let rules = saywut_naming::rules_for(t.language.as_deref());
+            let found = suggest_names(&t, &rules);
+            let mut text = String::new();
+            if found.is_empty() {
+                text.push_str(&loc.message("speakers-suggest-none", &[]));
+                text.push('\n');
+            }
+            for s in found {
+                text.push_str(&loc.message(
+                    "speakers-suggest-line",
+                    &[
+                        ("n", (s.speaker.0 + 1).into()),
+                        ("name", s.name.into()),
+                        ("text", t.segments[s.segment].text.trim().to_owned().into()),
                     ],
                 ));
                 text.push('\n');

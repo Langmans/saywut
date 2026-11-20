@@ -1,0 +1,15 @@
+# How a German speaker introduces themselves. {name} marks the name and must
+# come last. Phrases are matched without regard to case.
+#
+# German capitalizes nouns, so "ich bin Lehrer" also matches; that is why a
+# match is only ever a suggestion the user confirms.
+phrases = [
+    "ich bin {name}",
+    "mein name ist {name}",
+    "ich heiße {name}",
+    "hier ist {name}",
+    "hier spricht {name}",
+]
+
+# Lowercase words allowed inside a name: "Eva von Berg".
+particles = ["von", "zu", "vom", "van", "de"]
