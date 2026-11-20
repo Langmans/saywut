@@ -35,6 +35,11 @@ thin crates.
   matched in later sessions. Voice profiles are biometric data: local only, opt-in,
   deletable.
 - i18n: Fluent (`.ftl`) shared by Rust and the frontend.
+- Languages are data, not code: BCP-47 tags (`nl`, `nl-BE`, `de-CH`, …), the
+  speech languages offered come from what the active engine reports, and the
+  speaker-naming phrases live in a per-language data file. Adding a language
+  means adding files (UI locale, naming phrases, regression clips), not changing
+  the core.
 - UI: Tauri 2.
 
 ## Testing
