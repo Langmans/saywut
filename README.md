@@ -24,3 +24,7 @@ Coverage in the editor (Coverage Gutters reads `lcov.info`):
 ```sh
 cargo llvm-cov --workspace --lcov --output-path lcov.info
 ```
+
+## License
+
+[MIT](LICENSE)

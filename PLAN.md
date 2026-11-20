@@ -71,7 +71,6 @@ Spec first: a failing test, then the code (red, green).
 ## Open questions
 
 - Local only, or is a cloud API (e.g. Voxtral's) allowed as an option?
-- License.
 
 ## Manual checks (need real hardware or accounts)
 
