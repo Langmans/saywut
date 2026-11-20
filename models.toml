@@ -1,0 +1,13 @@
+# Models Saywut knows, pinned to an exact file. See "Models" in PLAN.md.
+# Updating an entry means: new revision, sha256 and size, regression budgets
+# rerun, before/after WER in the commit message.
+
+[[model]]
+id = "whisper-base"
+engine = "whisper"
+url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin"
+sha256 = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+size = 147951465
+license = "MIT"
+# Whisper is multilingual; these are the languages Saywut offers it for.
+languages = ["nl", "en", "de"]

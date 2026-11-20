@@ -66,7 +66,35 @@ Spec first: a failing test, then the code (red, green).
   separate PR per major update.
 - A PR is merged only with green CI; no auto-merge.
 - Model files are pinned by hash and updated by hand, since an update can change
-  accuracy: rerun the regression budgets first.
+  accuracy: rerun the regression budgets first. See Models below.
+
+## Models
+
+Models are data, like languages: one manifest, `models.toml` in the repository,
+lists every model the app knows. Adding or updating a model is an edit there,
+not a code change.
+
+- **One entry per model file**: a stable `id` (`whisper-base`), the engine, the
+  source URL pinned to an immutable revision (a Hugging Face commit, never
+  `main`), the sha256, the size, the license and the languages it covers.
+- **Content-addressed storage**: a file is stored as
+  `<engine>/<id>-<sha256 first 12>.<ext>` under the model directory (the user's
+  data directory in the app, `models/` in the repository for development). Old
+  and new versions can sit side by side, so a rollback needs no download.
+- **Verified download**: to a `.part` file, sha256 and size checked, then
+  renamed. A mismatch deletes the file and is an error. A file is also re-hashed
+  when it is first loaded after a start, so a corrupted file is noticed.
+- **Never automatic**: the app downloads only when the user picks a model, and
+  shows the size first. No background updates, no network access otherwise.
+- **Provenance in the transcript**: the transcript JSON records the engine,
+  model id and sha256 that produced it, so a result can be reproduced and an
+  accuracy change traced to a model update. (An optional field, so format
+  version 1 stays readable.)
+- **Updating a model**: change revision, sha256 and size in the manifest in one
+  commit (`chore(models): …`), with the regression budgets rerun and the WER/DER
+  before and after in the commit message. Dependabot does not cover this.
+- **Pruning**: files not referenced by the manifest are only removed by an
+  explicit command (`saywut models prune`), never silently.
 
 ## Phases
 
