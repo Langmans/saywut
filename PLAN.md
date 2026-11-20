@@ -91,8 +91,19 @@ not a code change.
   accuracy change traced to a model update. (An optional field, so format
   version 1 stays readable.)
 - **Updating a model**: change revision, sha256 and size in the manifest in one
-  commit (`chore(models): …`), with the regression budgets rerun and the WER/DER
-  before and after in the commit message. Dependabot does not cover this.
+  commit (`chore(models): …`), with the WER/DER before and after in the commit
+  message. Dependabot does not cover this.
+- **Tests gate a release**: a CI job runs the regression clips through every
+  model in the manifest and fails when one exceeds its WER/DER budget. It runs
+  on every change to `models.toml` (blocking the merge) and on every release
+  tag (blocking the release), so no release ships a model that has not passed
+  on exactly that file. Model files are cached in CI by sha256, so only a new
+  or changed model is downloaded. Budgets live next to the model entry in the
+  manifest.
+  - CI runners have no GPU: models run on CPU there, so clips stay short.
+    A model too slow for that runs the gate on a self-hosted runner instead.
+  - The clips must be committed and freely licensed (own recordings or CC0,
+    e.g. Common Voice); the Windows TTS clips cannot be made on Linux runners.
 - **Pruning**: files not referenced by the manifest are only removed by an
   explicit command (`saywut models prune`), never silently.
 
