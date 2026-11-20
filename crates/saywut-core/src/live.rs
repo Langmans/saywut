@@ -137,9 +137,7 @@ mod tests {
     #[test]
     fn level_is_measured_in_dbfs() {
         let event = LiveEvent::level(SourceId(1), 50, &[0.5, -0.5]);
-        let LiveEvent::Level { dbfs, .. } = event else {
-            panic!("not a level event");
-        };
+        let dbfs = to_value(&event)["dbfs"].as_f64().unwrap();
         assert!((dbfs + 6.02).abs() < 0.01, "{dbfs}");
         assert_eq!(
             to_value(&LiveEvent::level(SourceId(1), 50, &[])),

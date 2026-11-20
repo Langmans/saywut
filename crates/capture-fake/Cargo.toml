@@ -1,0 +1,19 @@
+[package]
+name = "saywut-capture-fake"
+description = "A live session replayed from a WAV file and its reference transcript."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+saywut-capture-file = { path = "../capture-file" }
+saywut-core = { path = "../saywut-core" }
+
+[dev-dependencies]
+hound = "3.5.1"
+
+[lints]
+workspace = true
