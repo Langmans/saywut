@@ -1,0 +1,10 @@
+[package]
+name = "saywut-core"
+description = "Platform-independent core of Saywut: audio frames, levels, transcript model."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
