@@ -1,7 +1,7 @@
-//! Tests against the real whisper-base model in the repository's `models/`;
-//! fetch it with `saywut models fetch whisper-base --model-dir models`. A
-//! missing model fails the test on purpose: skipping would hide an untested
-//! engine.
+//! Tests against the real whisper-base model in the repository's `models/`
+//! (fetch it with `saywut models fetch whisper-base --model-dir models`) on
+//! the committed clips in `testdata/speech/`. A missing model fails the test
+//! on purpose: skipping would hide an untested engine.
 //!
 //! The tests run one at a time: each whisper run uses every core, and ggml's
 //! busy-waiting thread pools slow down by an order of magnitude when several
@@ -44,26 +44,14 @@ fn engine() -> (MutexGuard<'static, ()>, WhisperAsr) {
     )
 }
 
-/// How many reference lines of a clip the tests use. The whole clips are
-/// 25–30 s; two lines (about 10 s) prove the same at a fraction of the time,
-/// since decoding time grows with the text and en-dialogue would otherwise
-/// need a second 30 s window.
-const LINES: usize = 2;
-
-/// Transcribes the first [`LINES`] lines of a clip and returns the WER against
-/// its reference JSON. The audio is cut halfway into the silence after the
-/// last line, so no word is split.
+/// Transcribes a committed FLEURS clip (`testdata/speech/`, one read
+/// sentence) and returns the WER against its reference JSON.
 fn clip_wer(engine: &mut WhisperAsr, name: &str, language: Option<&str>) -> f64 {
-    let base = repo().join("testdata/tts").join(name);
-    let mut audio = saywut_capture_file::read_wav(&base.with_extension("wav")).unwrap();
-    let mut reference =
+    let base = repo().join("testdata/speech").join(name);
+    let audio = saywut_capture_file::read_wav(&base.with_extension("wav")).unwrap();
+    let reference =
         Transcript::from_json(&std::fs::read_to_string(base.with_extension("json")).unwrap())
             .unwrap();
-    reference.segments.truncate(LINES);
-    let cut_ms = reference.segments[LINES - 1].end_ms + 300;
-    audio
-        .samples
-        .truncate((cut_ms * u64::from(audio.sample_rate) / 1000) as usize);
     let segments = engine.transcribe(&audio, language).unwrap();
     assert!(!segments.is_empty());
     assert!(segments.windows(2).all(|w| w[0].start_ms <= w[1].start_ms));
@@ -80,20 +68,27 @@ fn clip_wer(engine: &mut WhisperAsr, name: &str, language: Option<&str>) -> f64 
     score
 }
 
+// The bounds guard against regressions of whisper-base on these clips, with
+// some margin over what it scores now (nl 18%, en 13%, de 0%); the spike
+// measures quality on more data.
+
 #[test]
-fn english_dialogue() {
+fn english() {
     let (_guard, mut e) = engine();
-    assert!(clip_wer(&mut e, "en-dialogue", Some("en")) < 0.15);
+    assert!(clip_wer(&mut e, "en", Some("en")) < 0.25);
 }
 
 #[test]
-fn dutch_monologue_with_region_tag_and_auto_detect() {
+fn dutch_with_region_tag_and_auto_detect() {
     let (_guard, mut e) = engine();
-    // whisper-base gets 4 of the first 16 Dutch words wrong ("Goeden Morgen",
-    // "spraakherkening"); the bound guards against regressions, the spike
-    // measures quality.
-    assert!(clip_wer(&mut e, "nl-monologue", Some("nl-NL")) < 0.30);
-    assert!(clip_wer(&mut e, "nl-monologue", None) < 0.30);
+    assert!(clip_wer(&mut e, "nl", Some("nl-NL")) < 0.30);
+    assert!(clip_wer(&mut e, "nl", None) < 0.30);
+}
+
+#[test]
+fn german() {
+    let (_guard, mut e) = engine();
+    assert!(clip_wer(&mut e, "de", Some("de")) < 0.15);
 }
 
 #[test]

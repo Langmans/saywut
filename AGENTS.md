@@ -24,8 +24,12 @@ design and phases; [README.md](README.md) has build requirements.
   and stays out of coverage; everything it calls lives in `lib.rs` and is
   tested with Tauri's mock runtime. Run it from `crates/saywut-app` with
   `npm install` once, then `npm run tauri dev` (a clip other than
-  `en-dialogue`: `npm run tauri dev -- -- path/to/clip.wav`).
-- `tools/`: helper scripts (e.g. `tts-clips.ps1` for synthetic test audio).
+  `testdata/speech/two-voices`: `npm run tauri dev -- -- path/to/clip.wav`).
+- `testdata/speech/`: committed FLEURS clips (CC BY 4.0, see its README)
+  with reference transcripts; the model tests use these.
+- `tools/`: helpers: `speech-fixtures` builds `testdata/speech/` from
+  FLEURS, `tts-clips.ps1` makes synthetic speech on Windows,
+  `bench-whisper.sh` times whisper per backend.
 
 ## Checks
 
@@ -71,6 +75,10 @@ npm run coverage   # Vitest; fails below 100% lines, branches and functions
   "Models" in PLAN.md.
 - **Comments explain how and why**, not history. What changed and why goes
   in the commit message or a note next to the code, not in source.
+- **Docblocks are short.** At most ~5-6 lines, for items and file headers
+  alike. A longer explanation goes in a README next to the code, and the
+  docblock points to it. `missing_docs` is on: every public item has its
+  docblock.
 - **English in the repo**: code, comments, docs, commit messages.
 
 ## Before every commit: review

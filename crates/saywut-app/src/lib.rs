@@ -4,7 +4,8 @@
 //! Rust owns the session and the strings; the frontend in `ui/` only
 //! renders. A session runs on its own thread and sends every [`LiveEvent`]
 //! to the window as a [`EVENT`] event. Until real capture exists, the
-//! session is a [`FakeSession`] replaying a clip from `testdata/tts/`.
+//! session is a [`FakeSession`] replaying a clip with its transcript JSON,
+//! by default the committed `testdata/speech/two-voices`.
 //!
 //! Each start bumps a generation number. A session thread forwards events
 //! only while its generation is current, so a session that was replaced
@@ -30,9 +31,10 @@ pub const EVENT: &str = "live";
 /// Prefix of the Fluent messages the frontend shows.
 const UI_PREFIX: &str = "app-";
 
-/// The clip replayed when none is given: a two-speaker English dialogue.
+/// The clip replayed when none is given: two Dutch voices, committed, so the
+/// app starts on a fresh clone.
 pub fn default_clip() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/tts/en-dialogue.wav")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/speech/two-voices.wav")
 }
 
 type MakeClock = fn() -> Box<dyn Clock + Send>;

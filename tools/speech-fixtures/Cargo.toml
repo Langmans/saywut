@@ -1,0 +1,16 @@
+[package]
+name = "speech-fixtures"
+description = "Builds testdata/speech/ from FLEURS recordings (run once by hand)."
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+hound = "3.5.1"
+saywut-capture-file = { path = "../../crates/capture-file" }
+saywut-core = { path = "../../crates/saywut-core" }
+saywut-diarize-sherpa = { path = "../../crates/diarize-sherpa" }
+saywut-models = { path = "../../crates/saywut-models" }
+
+# A tool of its own, not part of the Saywut workspace or its coverage gate.
+[workspace]

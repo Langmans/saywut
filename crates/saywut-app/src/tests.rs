@@ -81,7 +81,8 @@ fn remove(wav: &Path) {
 
 #[test]
 fn default_clip_is_the_english_dialogue() {
-    assert!(default_clip().ends_with("testdata/tts/en-dialogue.wav"));
+    assert!(default_clip().ends_with("testdata/speech/two-voices.wav"));
+    assert!(default_clip().is_file());
 }
 
 #[test]

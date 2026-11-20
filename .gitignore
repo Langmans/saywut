@@ -1,6 +1,8 @@
 /target
 /models
 /testdata/tts
+/tools/*/target
+/tasks
 *.profraw
 lcov.info
 node_modules/

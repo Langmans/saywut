@@ -1,7 +1,8 @@
 //! Tests against the real diarization models in the repository's `models/`
 //! (`saywut models fetch pyannote-segmentation-3` and
-//! `saywut models fetch campplus-voxceleb`) and the TTS clips in
-//! `testdata/tts/` (`tools/tts-clips.ps1`). Missing files fail the tests.
+//! `saywut models fetch campplus-voxceleb`) and the committed FLEURS clip
+//! `testdata/speech/two-voices` (two people, halves alternating A, B, A, B).
+//! Missing models fail the tests.
 
 use std::path::{Path, PathBuf};
 
@@ -34,14 +35,20 @@ fn diarizer(speakers: Option<u32>) -> SherpaDiarizer {
     .unwrap()
 }
 
-/// Share of the clip's reference lines that get their true speaker when the
-/// diarizer's turns are applied to the reference timing.
-fn speaker_accuracy(d: &mut SherpaDiarizer, clip: &str) -> (f64, usize) {
-    let base = repo().join("testdata/tts").join(clip);
+fn two_voices() -> (Audio, Transcript) {
+    let base = repo().join("testdata/speech/two-voices");
     let audio = saywut_capture_file::read_wav(&base.with_extension("wav")).unwrap();
     let reference =
         Transcript::from_json(&std::fs::read_to_string(base.with_extension("json")).unwrap())
             .unwrap();
+    (audio, reference)
+}
+
+/// Share of the clip's reference lines that get their true speaker when the
+/// diarizer's turns are applied to the reference timing, and the number of
+/// speakers found.
+fn speaker_accuracy(d: &mut SherpaDiarizer) -> (f64, usize) {
+    let (audio, reference) = two_voices();
     let turns = normalize(d.diarize(&audio).unwrap());
     let speakers = turns.iter().map(|t| t.speaker).max().map_or(0, |s| s.0 + 1);
     let mut segments = reference.segments.clone();
@@ -53,7 +60,7 @@ fn speaker_accuracy(d: &mut SherpaDiarizer, clip: &str) -> (f64, usize) {
         .count();
     let accuracy = right as f64 / segments.len() as f64;
     eprintln!(
-        "{clip}: {speakers} speakers, {right}/{} lines right",
+        "{speakers} speakers, {right}/{} lines right",
         segments.len()
     );
     (accuracy, speakers as usize)
@@ -61,25 +68,18 @@ fn speaker_accuracy(d: &mut SherpaDiarizer, clip: &str) -> (f64, usize) {
 
 #[test]
 fn two_voices_are_told_apart() {
-    let (accuracy, speakers) = speaker_accuracy(&mut diarizer(None), "en-dialogue");
+    let (accuracy, speakers) = speaker_accuracy(&mut diarizer(None));
     assert_eq!(speakers, 2);
     assert_eq!(accuracy, 1.0);
 }
 
-/// en-three-speakers uses David, Zira and Mark. David and Mark are two very
-/// similar male Microsoft voices that the embedding model cannot tell apart,
-/// even with the speaker count given: their four lines end up as one
-/// speaker. What the clip can show is that Zira stays separate and that the
-/// count is passed on without breaking anything; real three-speaker accuracy
-/// is measured on recorded speech (see PLAN.md, phase 1).
 #[test]
-fn similar_synthetic_voices_merge_distinct_ones_do_not() {
-    let (accuracy, speakers) = speaker_accuracy(&mut diarizer(Some(3)), "en-three-speakers");
-    assert!(speakers >= 2, "{speakers}");
-    assert!(accuracy >= 4.0 / 6.0, "{accuracy}");
+fn speaker_count_can_be_given() {
+    let (accuracy, speakers) = speaker_accuracy(&mut diarizer(Some(2)));
+    assert_eq!((accuracy, speakers), (1.0, 2));
 }
 
-/// One line of en-dialogue as its own audio.
+/// One line of the clip as its own audio.
 fn line(audio: &Audio, reference: &Transcript, index: usize) -> Audio {
     let seg = &reference.segments[index];
     let at = |ms: u64| (ms * 16) as usize;
@@ -91,17 +91,13 @@ fn line(audio: &Audio, reference: &Transcript, index: usize) -> Audio {
 
 #[test]
 fn embeddings_match_the_same_voice_only() {
-    let base = repo().join("testdata/tts/en-dialogue");
-    let audio = saywut_capture_file::read_wav(&base.with_extension("wav")).unwrap();
-    let reference =
-        Transcript::from_json(&std::fs::read_to_string(base.with_extension("json")).unwrap())
-            .unwrap();
+    let (audio, reference) = two_voices();
     let mut e = SherpaEmbedder::load(&model("campplus-voxceleb")).unwrap();
     let mut embed = |i| e.embed(&line(&audio, &reference, i)).unwrap();
-    // Lines 0 and 2 are David, line 1 is Zira.
-    let (david, david_again, zira) = (embed(0), embed(2), embed(1));
-    let same = cosine(&david, &david_again);
-    let other = cosine(&david, &zira);
+    // Lines 0 and 2 are the two halves of voice A, line 1 is voice B.
+    let (a, a_again, b) = (embed(0), embed(2), embed(1));
+    let same = cosine(&a, &a_again);
+    let other = cosine(&a, &b);
     eprintln!("same voice {same:.2}, other voice {other:.2}");
     assert!(same >= MATCH_THRESHOLD, "{same}");
     assert!(other < MATCH_THRESHOLD, "{other}");

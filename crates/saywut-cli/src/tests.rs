@@ -284,11 +284,18 @@ fn system_defaults() {
 
 // --- whisper and models ---
 
-/// Whisper and diarization together on the two-voice clip: the lines
-/// alternate between Speaker 1 and Speaker 2.
+/// The committed two-voice clip (`testdata/speech/`): voices A and B, each
+/// speaking twice, in the order A, B, A, B.
+fn two_voices() -> (PathBuf, PathBuf) {
+    let base = repo().join("testdata/speech/two-voices");
+    (base.with_extension("wav"), base.with_extension("json"))
+}
+
+/// Whisper and diarization together: the text comes through and both
+/// voices get their own label.
 #[test]
 fn whisper_transcribes_and_diarizes_a_clip() {
-    let wav = repo().join("testdata/tts/en-dialogue.wav");
+    let (wav, _) = two_voices();
     let models = repo().join("models");
     let r = saywut(&[
         "--locale",
@@ -298,7 +305,7 @@ fn whisper_transcribes_and_diarizes_a_clip() {
         "transcribe",
         s(&wav),
         "-l",
-        "en",
+        "nl",
         "-f",
         "txt",
         "--diarize",
@@ -306,15 +313,18 @@ fn whisper_transcribes_and_diarizes_a_clip() {
         "2",
     ]);
     assert_eq!(r.code, 0, "{}", r.err);
-    assert!(r.out.to_lowercase().contains("report"), "{}", r.out);
-    // "[00:00:05] Speaker 2: Almost. ..." -> "Speaker 2"
-    let speakers: Vec<&str> = r
+    assert!(r.out.to_lowercase().contains("populair"), "{}", r.out);
+    // "[00:00:05] Speaker 2: ..." -> "Speaker 2"
+    let mut speakers: Vec<&str> = r
         .out
         .lines()
         .filter_map(|l| l.split_once("] ")?.1.split_once(": "))
         .map(|(who, _)| who)
         .collect();
-    assert_eq!(speakers[..2], ["Speaker 1", "Speaker 2"], "{}", r.out);
+    assert_eq!(speakers[0], "Speaker 1", "{}", r.out);
+    speakers.sort_unstable();
+    speakers.dedup();
+    assert_eq!(speakers, ["Speaker 1", "Speaker 2"], "{}", r.out);
 }
 
 #[test]
@@ -441,31 +451,30 @@ fn profiles_cmd(store: &Path, args: &[&str]) -> Run {
     )
 }
 
-/// Learn David's voice from en-dialogue, then recognize him in a fresh
-/// diarization of the same clip; delete him again.
+/// Learn voice A of the two-voice clip as "Anna", then recognize her in a
+/// fresh diarization of the same clip; delete her again.
 #[test]
 fn profiles_learn_recognize_delete() {
     let dir = Scratch::new("profiles");
     let store = dir.path("profiles").join("voice-profiles.json");
-    let clip = repo().join("testdata/tts/en-dialogue");
-    let (wav, json) = (clip.with_extension("wav"), clip.with_extension("json"));
+    let (wav, json) = two_voices();
 
     assert_eq!(
         profiles_cmd(&store, &["profiles", "list"]).out,
         "Geen stemprofielen opgeslagen.\n"
     );
-    let add = ["profiles", "add", "David", s(&wav), s(&json), "1"];
+    let add = ["profiles", "add", "Anna", s(&wav), s(&json), "1"];
     let r = profiles_cmd(&store, &add);
     assert_eq!(
         (r.code, r.out.as_str()),
-        (0, "Stem van David opgeslagen.\n"),
+        (0, "Stem van Anna opgeslagen.\n"),
         "{}",
         r.err
     );
     profiles_cmd(&store, &add);
     assert_eq!(
         profiles_cmd(&store, &["profiles", "list"]).out,
-        "David  (2 opnames)\n"
+        "Anna  (2 opnames)\n"
     );
 
     // The fake engine replays the reference text; diarization and
@@ -487,19 +496,16 @@ fn profiles_learn_recognize_delete() {
     );
     assert_eq!(r.code, 0, "{}", r.err);
     let lines: Vec<&str> = r.out.lines().collect();
-    assert!(
-        lines[0].starts_with("[00:00:00] David: Good morning"),
-        "{}",
-        r.out
-    );
-    assert!(lines[1].contains("Spreker 2: Almost"), "{}", r.out);
+    assert!(lines[0].starts_with("[00:00:00] Anna: (1/2)"), "{}", r.out);
+    assert!(lines[1].contains("Spreker 2: (1/2)"), "{}", r.out);
+    assert!(lines[2].contains("Anna: (2/2)"), "{}", r.out);
 
-    let r = profiles_cmd(&store, &["profiles", "delete", "David"]);
-    assert_eq!(r.out, "Stemprofiel van David verwijderd.\n");
-    let r = profiles_cmd(&store, &["profiles", "delete", "David"]);
+    let r = profiles_cmd(&store, &["profiles", "delete", "Anna"]);
+    assert_eq!(r.out, "Stemprofiel van Anna verwijderd.\n");
+    let r = profiles_cmd(&store, &["profiles", "delete", "Anna"]);
     assert_eq!(
         (r.code, r.err.as_str()),
-        (1, "Er is geen stemprofiel van David.\n")
+        (1, "Er is geen stemprofiel van Anna.\n")
     );
 }
 
@@ -551,8 +557,7 @@ fn profiles_errors() {
     let blocked = dir.path("blocked");
     fs::write(&blocked, "").unwrap();
     let in_file = blocked.join("voice-profiles.json");
-    let clip = repo().join("testdata/tts/en-dialogue");
-    let (cw, cj) = (clip.with_extension("wav"), clip.with_extension("json"));
+    let (cw, cj) = two_voices();
     let r = profiles_cmd(&in_file, &["profiles", "add", "X", s(&cw), s(&cj), "1"]);
     assert_eq!(r.code, 1);
     assert!(r.err.starts_with("Kon "), "{}", r.err);

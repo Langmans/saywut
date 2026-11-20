@@ -10,12 +10,11 @@ publish = false
 
 [dependencies]
 saywut-core = { path = "../saywut-core" }
-# download-binaries fetches prebuilt sherpa-onnx and onnxruntime libraries
-# (shared) from sherpa-onnx's GitHub releases at build time; tts is not needed.
-# Its build script copies the DLLs into target/<profile>/deps, a folder cargo's
-# current build-dir layout no longer creates, so that folder must exist before
-# building (see README). The static variant is no way out: it misses
-# advapi32 when sherpa-rs links itself and mixes /MT into our /MD runtime.
+# download-binaries fetches prebuilt shared sherpa-onnx and onnxruntime
+# libraries from sherpa-onnx's GitHub releases at build time; tts is unused.
+# Its build script copies the DLLs into target/<profile>/deps, which cargo's
+# build-dir layout does not create: that folder must exist (see README).
+# Not static: that build lacks advapi32 and brings a /MT runtime next to /MD.
 sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries"] }
 
 [dev-dependencies]

@@ -106,7 +106,8 @@ not a code change.
   - CI runners have no GPU: models run on CPU there, so clips stay short.
     A model too slow for that runs the gate on a self-hosted runner instead.
   - The clips must be committed and freely licensed (own recordings or CC0,
-    e.g. Common Voice); the Windows TTS clips cannot be made on Linux runners.
+    e.g. FLEURS or Common Voice; `testdata/speech/` holds the first ones);
+    the Windows TTS clips cannot be made on Linux runners.
 - **Pruning**: files not referenced by the manifest are only removed by an
   explicit command (`saywut models prune`), never silently.
 
@@ -223,7 +224,8 @@ only by CI, never on a developer machine:
      larger model doing the after-pass). Cloud engines such as ElevenLabs
      Scribe only if the open question on cloud APIs is answered yes.
    - Data: Common Voice nl/en/de (CC0, read speech) and own recordings
-     (spontaneous speech). Published Dutch results show whisper doing clearly
+     (spontaneous speech), including video calls: compressed audio, uneven
+     microphone quality between speakers, people talking over each other. Published Dutch results show whisper doing clearly
      worse on spontaneous broadcast speech than on Common Voice, so read speech
      alone flatters every model.
    - No independent Dutch comparison of these engines was found; Mistral's
@@ -278,20 +280,3 @@ Looked at for ideas, no code taken:
   the OS setting, also when it changes while the app runs; nl and de via
   `SAYWUT_LANG`. On Windows, macOS and Linux.
 - The app opening its window (`saywut-app/src/main.rs`, outside coverage).
-
-## Open work
-
-Phases 2 and 3 run in the CLI (whisper, diarization, speaker editing, name
-suggestions, voice profiles). Before phase 4:
-
-- CI needs committed, freely licensed speech clips (Common Voice nl/en/de)
-  with reference transcripts; the model tests use the git-ignored TTS clips
-  and fail on CI runners until then.
-- Resampling: whisper and diarization accept only 16 kHz input.
-- Fuzz targets for the parsers (transcript JSON, manifest, naming files,
-  voice profiles) and a size limit on files read whole.
-- The whisper model tests take ~11 s normally but minutes under
-  `cargo llvm-cov`; find out why.
-- The scratch-dir test helper is duplicated in three crates (`tempfile`).
-- Measure whisper large-v3-turbo next to base (download on approval).
-- Desktop app: a manual light/dark override next to following the OS.
