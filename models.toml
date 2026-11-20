@@ -11,3 +11,25 @@ size = 147951465
 license = "MIT"
 # Whisper is multilingual; these are the languages Saywut offers it for.
 languages = ["nl", "en", "de"]
+
+# Diarization: who speaks when. Segmentation finds speaker turns, the
+# embedding model turns a stretch of speech into a voice vector for clustering
+# and for voice profiles. Both are language independent (languages = []).
+
+[[model]]
+id = "pyannote-segmentation-3"
+engine = "diarization"
+url = "https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/9403a6902bb58e3d5ae8c7e77c3422de279db2e0/model.onnx"
+sha256 = "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079"
+size = 5992913
+license = "MIT"
+languages = []
+
+[[model]]
+id = "campplus-voxceleb"
+engine = "speaker-embedding"
+url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+sha256 = "98daf9bcf1c8abf3db374fec4c27a5eda7c58705bb3f180d057b085a72a88bb5"
+size = 29596979
+license = "Apache-2.0"
+languages = []

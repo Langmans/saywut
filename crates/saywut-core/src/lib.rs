@@ -8,3 +8,4 @@ pub mod export;
 pub mod level;
 pub mod pipeline;
 pub mod transcript;
+pub mod wer;

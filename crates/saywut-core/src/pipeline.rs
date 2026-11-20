@@ -5,14 +5,16 @@ use std::collections::BTreeSet;
 use crate::asr::{AsrEngine, AsrError, Audio};
 use crate::transcript::{Speaker, Transcript};
 
-/// Runs `engine` over all of `audio`. The speaker list holds every speaker
+/// Runs `engine` over all of `audio`. Segments with only whitespace (engines
+/// emit them for silence) are dropped. The speaker list holds every speaker
 /// that occurs in a segment, in id order and still unnamed.
 pub fn transcribe_file(
     engine: &mut dyn AsrEngine,
     audio: &Audio,
     language: Option<&str>,
 ) -> Result<Transcript, AsrError> {
-    let segments = engine.transcribe(audio, language)?;
+    let mut segments = engine.transcribe(audio, language)?;
+    segments.retain(|s| !s.text.trim().is_empty());
     let ids: BTreeSet<_> = segments.iter().filter_map(|s| s.speaker).collect();
     Ok(Transcript {
         language: language.map(str::to_owned),
@@ -74,6 +76,22 @@ mod tests {
             ]
         );
         assert_eq!(t.segments.len(), 4);
+    }
+
+    #[test]
+    fn drops_blank_segments() {
+        let blank = Segment {
+            text: " \n".into(),
+            ..seg(500, Some(1))
+        };
+        let mut engine = FakeAsr {
+            languages: vec![],
+            script: vec![seg(0, Some(0)), blank],
+        };
+        let t = transcribe_file(&mut engine, &audio(), None).unwrap();
+        assert_eq!(t.segments, vec![seg(0, Some(0))]);
+        // A speaker heard only in a blank segment is not listed.
+        assert_eq!(t.speakers.len(), 1);
     }
 
     #[test]

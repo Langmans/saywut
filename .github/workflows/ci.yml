@@ -11,12 +11,26 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Where tests and `saywut models fetch` find the real models.
+      SAYWUT_MODEL_DIR: ${{ github.workspace }}/models
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy, llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
+      # whisper-rs-sys generates bindings with libclang; the runner image has
+      # LLVM installed but does not point to it.
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content $env:GITHUB_ENV "LIBCLANG_PATH=C:\Program Files\LLVM\bin"
+      # Model files keyed by the manifest: only a changed manifest downloads.
+      - uses: actions/cache@v4
+        with:
+          path: models
+          key: models-${{ hashFiles('models.toml') }}
+      - run: cargo run --quiet -p saywut-cli -- models fetch whisper-base
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo llvm-cov --workspace --fail-under-lines 100

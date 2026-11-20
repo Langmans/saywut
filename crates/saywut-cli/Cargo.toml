@@ -13,11 +13,18 @@ name = "saywut"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.6.9", features = ["derive"] }
+clap = { version = "4.6.9", features = ["derive", "env"] }
+dirs = "7.0.0"
+saywut-asr-whisper = { path = "../asr-whisper" }
 saywut-capture-file = { path = "../capture-file" }
 saywut-core = { path = "../saywut-core" }
 saywut-i18n = { path = "../saywut-i18n" }
+saywut-models = { path = "../saywut-models" }
 sys-locale = "0.3.2"
+
+[features]
+cuda = ["saywut-asr-whisper/cuda"]
+vulkan = ["saywut-asr-whisper/vulkan"]
 
 [dev-dependencies]
 hound = "3.5.1"

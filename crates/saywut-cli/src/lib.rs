@@ -1,9 +1,10 @@
-//! `saywut transcribe <file>`: an audio file in, a transcript out.
+//! The `saywut` command line.
 //!
-//! The only engine so far is the fake one, which replays the segments of a
-//! transcript JSON given with `--fake-script`. That is enough to run the whole
-//! chain (file reading, pipeline, export, localization) end to end; real
-//! engines are added as further `--engine` values.
+//! - `saywut transcribe <file>`: an audio file in, a transcript out, with
+//!   whisper or with the fake engine, which replays the segments of a
+//!   transcript JSON given with `--fake-script`.
+//! - `saywut models list|fetch`: the models from the manifest and verified
+//!   downloads of them.
 //!
 //! Messages are localized; clap's own help and usage text is English.
 
@@ -15,13 +16,15 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use saywut_asr_whisper::WhisperAsr;
 use saywut_core::{
-    asr::{AsrError, FakeAsr},
+    asr::{AsrEngine, AsrError, FakeAsr},
     export,
     pipeline::transcribe_file,
     transcript::{SpeakerId, Transcript},
 };
 use saywut_i18n::{FALLBACK, FluentValue, Localizer};
+use saywut_models::{Manifest, Model, ModelError, Opener};
 
 /// Languages the fake engine accepts when its script names none.
 const FAKE_LANGUAGES: [&str; 3] = ["en", "nl", "de"];
@@ -38,14 +41,33 @@ struct Cli {
     #[arg(long, global = true)]
     locale: Option<String>,
 
+    /// Where model files are stored. Defaults to the user's local data
+    /// directory.
+    #[arg(long, global = true, env = "SAYWUT_MODEL_DIR")]
+    model_dir: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
-    /// Transcribe an audio file (WAV).
+    /// Transcribe an audio file (WAV, 16 kHz for whisper).
     Transcribe(TranscribeArgs),
+    /// List or download speech models.
+    #[command(subcommand)]
+    Models(ModelsCommand),
+}
+
+#[derive(Subcommand)]
+enum ModelsCommand {
+    /// Show the known models and whether they are downloaded.
+    List,
+    /// Download a model and verify its size and sha256.
+    Fetch {
+        /// Model id, as shown by `saywut models list`.
+        id: String,
+    },
 }
 
 #[derive(Args)]
@@ -65,6 +87,14 @@ struct TranscribeArgs {
     #[arg(short, long)]
     output: Option<PathBuf>,
 
+    /// Speech recognition engine.
+    #[arg(long, value_enum, default_value_t = Engine::Whisper)]
+    engine: Engine,
+
+    /// Model id for the engine, as shown by `saywut models list`.
+    #[arg(long, default_value = "whisper-base")]
+    model: String,
+
     /// Transcript JSON whose segments the fake engine plays back.
     #[arg(long)]
     fake_script: Option<PathBuf>,
@@ -78,9 +108,24 @@ enum Format {
     Txt,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum Engine {
+    Whisper,
+    Fake,
+}
+
 /// Parses `args` (program name first) and runs the command. Returns the exit
 /// code: 0 on success, 1 on a failed command, clap's code on a usage error.
 pub fn run<I, T>(args: I, out: &mut dyn Write, err: &mut dyn Write) -> u8
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    run_with(args, out, err, &saywut_models::http_get)
+}
+
+/// [`run`] with the function that opens download URLs passed in.
+fn run_with<I, T>(args: I, out: &mut dyn Write, err: &mut dyn Write, open: Opener) -> u8
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
@@ -95,8 +140,15 @@ where
     };
     let locale = cli.locale.unwrap_or_else(system_locale);
     let loc = Localizer::new(&locale);
-    let Command::Transcribe(args) = cli.command;
-    match transcribe(&args, &loc, out) {
+    let model_dir = cli.model_dir.unwrap_or_else(default_model_dir);
+    let result = match cli.command {
+        Command::Transcribe(args) => transcribe(&args, &loc, &model_dir, out),
+        Command::Models(ModelsCommand::List) => list_models(&loc, &model_dir, out),
+        Command::Models(ModelsCommand::Fetch { id }) => {
+            fetch_model(&id, &loc, &model_dir, open, out)
+        }
+    };
+    match result {
         Ok(()) => 0,
         Err(message) => {
             let _ = writeln!(err, "{message}");
@@ -107,6 +159,10 @@ where
 
 fn system_locale() -> String {
     sys_locale::get_locale().unwrap_or(FALLBACK.to_owned())
+}
+
+fn default_model_dir() -> PathBuf {
+    dirs::data_local_dir().map_or(PathBuf::from("models"), |d| d.join("saywut").join("models"))
 }
 
 fn path_value(path: &Path) -> FluentValue<'static> {
@@ -125,7 +181,72 @@ fn asr_message(loc: &Localizer, error: &AsrError) -> String {
     }
 }
 
-fn transcribe(args: &TranscribeArgs, loc: &Localizer, out: &mut dyn Write) -> Result<(), String> {
+fn find_model<'m>(manifest: &'m Manifest, id: &str, loc: &Localizer) -> Result<&'m Model, String> {
+    manifest
+        .get(id)
+        .map_err(|_| loc.message("error-model-unknown", &[("id", id.to_owned().into())]))
+}
+
+/// The engine chosen on the command line. The outer error is a finished,
+/// localized message (unknown, missing or damaged model, unreadable script);
+/// the inner one is the engine's own and is localized together with the
+/// engine's transcription errors.
+fn engine(
+    args: &TranscribeArgs,
+    loc: &Localizer,
+    model_dir: &Path,
+) -> Result<Result<Box<dyn AsrEngine>, AsrError>, String> {
+    match args.engine {
+        Engine::Fake => {
+            let script = match &args.fake_script {
+                Some(path) => read_script(path).map_err(|reason| {
+                    loc.message(
+                        "error-read-script",
+                        &[("path", path_value(path)), ("reason", reason.into())],
+                    )
+                })?,
+                None => Transcript::default(),
+            };
+            let languages = match script.language {
+                Some(tag) => vec![tag],
+                None => FAKE_LANGUAGES.map(str::to_owned).to_vec(),
+            };
+            Ok(Ok(Box::new(FakeAsr {
+                languages,
+                script: script.segments,
+            })))
+        }
+        Engine::Whisper => {
+            let manifest = Manifest::builtin();
+            let model = find_model(&manifest, &args.model, loc)?;
+            let path = model.path(model_dir);
+            let id: FluentValue = model.id.clone().into();
+            if !path.is_file() {
+                return Err(loc.message("error-model-missing", &[("id", id)]));
+            }
+            // Re-hash on every load: a damaged file must not reach whisper.
+            saywut_models::verify(model, &path).map_err(|e| {
+                loc.message(
+                    "error-model-corrupt",
+                    &[
+                        ("id", id.clone()),
+                        ("path", path_value(&path)),
+                        ("reason", e.to_string().into()),
+                    ],
+                )
+            })?;
+            Ok(WhisperAsr::load(&path, model.languages.clone())
+                .map(|e| Box::new(e) as Box<dyn AsrEngine>))
+        }
+    }
+}
+
+fn transcribe(
+    args: &TranscribeArgs,
+    loc: &Localizer,
+    model_dir: &Path,
+    out: &mut dyn Write,
+) -> Result<(), String> {
     let audio = saywut_capture_file::read_wav(&args.input).map_err(|e| {
         loc.message(
             "error-read-audio",
@@ -135,26 +256,8 @@ fn transcribe(args: &TranscribeArgs, loc: &Localizer, out: &mut dyn Write) -> Re
             ],
         )
     })?;
-
-    let script = match &args.fake_script {
-        Some(path) => read_script(path).map_err(|reason| {
-            loc.message(
-                "error-read-script",
-                &[("path", path_value(path)), ("reason", reason.into())],
-            )
-        })?,
-        None => Transcript::default(),
-    };
-    let languages = match script.language {
-        Some(tag) => vec![tag],
-        None => FAKE_LANGUAGES.map(str::to_owned).to_vec(),
-    };
-    let mut engine = FakeAsr {
-        languages,
-        script: script.segments,
-    };
-
-    let transcript = transcribe_file(&mut engine, &audio, args.language.as_deref())
+    let transcript = engine(args, loc, model_dir)?
+        .and_then(|mut engine| transcribe_file(engine.as_mut(), &audio, args.language.as_deref()))
         .map_err(|e| asr_message(loc, &e))?;
 
     let fallback =
@@ -170,6 +273,10 @@ fn transcribe(args: &TranscribeArgs, loc: &Localizer, out: &mut dyn Write) -> Re
         Some(path) => (fs::write(path, &text), path.as_path()),
         None => (out.write_all(text.as_bytes()), Path::new("-")),
     };
+    write_result(result, target, loc)
+}
+
+fn write_result(result: std::io::Result<()>, target: &Path, loc: &Localizer) -> Result<(), String> {
     result.map_err(|e| {
         loc.message(
             "error-write-output",
@@ -181,325 +288,64 @@ fn transcribe(args: &TranscribeArgs, loc: &Localizer, out: &mut dyn Write) -> Re
     })
 }
 
+fn list_models(loc: &Localizer, model_dir: &Path, out: &mut dyn Write) -> Result<(), String> {
+    let mut text = String::new();
+    for model in Manifest::builtin().models {
+        let status = if model.path(model_dir).is_file() {
+            "models-status-present"
+        } else {
+            "models-status-missing"
+        };
+        let languages = if model.languages.is_empty() {
+            loc.message("models-languages-any", &[])
+        } else {
+            model.languages.join(", ")
+        };
+        let line = loc.message(
+            "models-list-line",
+            &[
+                ("id", model.id.clone().into()),
+                ("engine", model.engine.clone().into()),
+                ("size", format!("{:.0}", model.size as f64 / 1e6).into()),
+                ("languages", languages.into()),
+                ("status", loc.message(status, &[]).into()),
+            ],
+        );
+        text.push_str(&line);
+        text.push('\n');
+    }
+    write_result(out.write_all(text.as_bytes()), Path::new("-"), loc)
+}
+
+fn fetch_model(
+    id: &str,
+    loc: &Localizer,
+    model_dir: &Path,
+    open: Opener,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let manifest = Manifest::builtin();
+    let model = find_model(&manifest, id, loc)?;
+    let path = saywut_models::fetch(model, model_dir, open).map_err(|e: ModelError| {
+        loc.message(
+            "error-model-fetch",
+            &[
+                ("id", id.to_owned().into()),
+                ("reason", e.to_string().into()),
+            ],
+        )
+    })?;
+    let line = loc.message(
+        "models-ready",
+        &[("id", id.to_owned().into()), ("path", path_value(&path))],
+    );
+    write_result(writeln!(out, "{line}"), Path::new("-"), loc)
+}
+
 fn read_script(path: &Path) -> Result<Transcript, String> {
     let json = fs::read_to_string(path).map_err(|e| e.to_string())?;
     Transcript::from_json(&json).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use hound::{SampleFormat, WavSpec, WavWriter};
-
-    /// A scratch directory per test, removed again on drop.
-    struct Scratch(PathBuf);
-
-    impl Scratch {
-        fn new(name: &str) -> Self {
-            let dir =
-                std::env::temp_dir().join(format!("saywut-cli-{}-{name}", std::process::id()));
-            fs::create_dir_all(&dir).unwrap();
-            Self(dir)
-        }
-
-        fn path(&self, file: &str) -> PathBuf {
-            self.0.join(file)
-        }
-
-        /// Two seconds of silence at 16 kHz.
-        fn wav(&self) -> PathBuf {
-            let path = self.path("in.wav");
-            let spec = WavSpec {
-                channels: 1,
-                sample_rate: 16_000,
-                bits_per_sample: 16,
-                sample_format: SampleFormat::Int,
-            };
-            let mut w = WavWriter::create(&path, spec).unwrap();
-            for _ in 0..32_000 {
-                w.write_sample(0_i16).unwrap();
-            }
-            w.finalize().unwrap();
-            path
-        }
-
-        fn script(&self, json: &str) -> PathBuf {
-            let path = self.path("script.json");
-            fs::write(&path, json).unwrap();
-            path
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
-
-    const SCRIPT: &str = r#"{
-        "version": 1,
-        "segments": [
-            {"start_ms": 0, "end_ms": 900, "speaker": 0, "text": "Hallo."},
-            {"start_ms": 1000, "end_ms": 1800, "speaker": 1, "text": "Hoi."}
-        ]
-    }"#;
-
-    struct Run {
-        code: u8,
-        out: String,
-        err: String,
-    }
-
-    fn saywut(args: &[&str]) -> Run {
-        let (mut out, mut err) = (Vec::new(), Vec::new());
-        let code = run(
-            std::iter::once("saywut").chain(args.iter().copied()),
-            &mut out,
-            &mut err,
-        );
-        Run {
-            code,
-            out: String::from_utf8(out).unwrap(),
-            err: String::from_utf8(err).unwrap(),
-        }
-    }
-
-    fn s(p: &Path) -> &str {
-        p.to_str().unwrap()
-    }
-
-    #[test]
-    fn help_goes_to_stdout() {
-        let r = saywut(&["--help"]);
-        assert_eq!(r.code, 0);
-        assert!(r.out.contains("transcribe"));
-    }
-
-    #[test]
-    fn usage_error_goes_to_stderr() {
-        let r = saywut(&["transcribe"]);
-        assert_eq!(r.code, 2);
-        assert!(r.err.contains("<INPUT>"));
-    }
-
-    #[test]
-    fn srt_with_localized_speaker_labels() {
-        let dir = Scratch::new("srt");
-        let (wav, script) = (dir.wav(), dir.script(SCRIPT));
-        let r = saywut(&[
-            "--locale",
-            "nl",
-            "transcribe",
-            s(&wav),
-            "-f",
-            "srt",
-            "--fake-script",
-            s(&script),
-        ]);
-        assert_eq!(r.code, 0, "{}", r.err);
-        assert_eq!(
-            r.out,
-            "1\n00:00:00,000 --> 00:00:00,900\nSpreker 1: Hallo.\n\n\
-             2\n00:00:01,000 --> 00:00:01,800\nSpreker 2: Hoi.\n\n"
-        );
-    }
-
-    #[test]
-    fn vtt_and_txt() {
-        let dir = Scratch::new("vtt-txt");
-        let (wav, script) = (dir.wav(), dir.script(SCRIPT));
-        let vtt = saywut(&[
-            "--locale",
-            "de",
-            "transcribe",
-            s(&wav),
-            "-f",
-            "vtt",
-            "--fake-script",
-            s(&script),
-        ]);
-        assert!(vtt.out.starts_with("WEBVTT\n\n"));
-        assert!(vtt.out.contains("<v Sprecher 2>Hoi."));
-        let txt = saywut(&[
-            "--locale",
-            "en",
-            "transcribe",
-            s(&wav),
-            "-f",
-            "txt",
-            "--fake-script",
-            s(&script),
-        ]);
-        assert_eq!(
-            txt.out,
-            "[00:00:00] Speaker 1: Hallo.\n[00:00:01] Speaker 2: Hoi.\n"
-        );
-    }
-
-    #[test]
-    fn json_is_the_default_and_carries_the_language() {
-        let dir = Scratch::new("json");
-        let (wav, script) = (dir.wav(), dir.script(SCRIPT));
-        let r = saywut(&[
-            "transcribe",
-            s(&wav),
-            "-l",
-            "nl",
-            "--fake-script",
-            s(&script),
-        ]);
-        assert_eq!(r.code, 0, "{}", r.err);
-        let t = Transcript::from_json(&r.out).unwrap();
-        assert_eq!(t.language.as_deref(), Some("nl"));
-        assert_eq!(t.speakers.len(), 2);
-        assert_eq!(t.segments.len(), 2);
-    }
-
-    #[test]
-    fn without_script_the_transcript_is_empty() {
-        let dir = Scratch::new("empty");
-        let r = saywut(&["transcribe", s(&dir.wav()), "-f", "srt"]);
-        assert_eq!((r.code, r.out.as_str()), (0, ""));
-    }
-
-    #[test]
-    fn writes_to_output_file() {
-        let dir = Scratch::new("output");
-        let (wav, script, srt) = (dir.wav(), dir.script(SCRIPT), dir.path("out.srt"));
-        let r = saywut(&[
-            "transcribe",
-            s(&wav),
-            "-f",
-            "srt",
-            "-o",
-            s(&srt),
-            "--fake-script",
-            s(&script),
-        ]);
-        assert_eq!((r.code, r.out.as_str()), (0, ""));
-        assert!(fs::read_to_string(&srt).unwrap().contains("Hallo."));
-    }
-
-    #[test]
-    fn missing_audio_is_a_localized_error() {
-        let r = saywut(&["--locale", "nl", "transcribe", "geen-bestand.wav"]);
-        assert_eq!(r.code, 1);
-        assert!(
-            r.err
-                .starts_with("Kon audiobestand geen-bestand.wav niet lezen: "),
-            "{}",
-            r.err
-        );
-    }
-
-    #[test]
-    fn unreadable_or_invalid_script() {
-        let dir = Scratch::new("bad-script");
-        let wav = dir.wav();
-        let missing = saywut(&[
-            "--locale",
-            "en",
-            "transcribe",
-            s(&wav),
-            "--fake-script",
-            s(&dir.path("none.json")),
-        ]);
-        assert_eq!(missing.code, 1);
-        assert!(
-            missing.err.starts_with("Could not read fake script"),
-            "{}",
-            missing.err
-        );
-
-        let invalid = dir.script("{");
-        let r = saywut(&[
-            "--locale",
-            "en",
-            "transcribe",
-            s(&wav),
-            "--fake-script",
-            s(&invalid),
-        ]);
-        assert_eq!(r.code, 1);
-        assert!(r.err.contains("invalid transcript JSON"), "{}", r.err);
-    }
-
-    #[test]
-    fn script_language_limits_the_fake_engine() {
-        let dir = Scratch::new("language");
-        let wav = dir.wav();
-        let script = dir.script(r#"{"version": 1, "language": "en"}"#);
-        let ok = saywut(&[
-            "transcribe",
-            s(&wav),
-            "-l",
-            "en",
-            "--fake-script",
-            s(&script),
-        ]);
-        assert_eq!(ok.code, 0, "{}", ok.err);
-        let r = saywut(&[
-            "--locale",
-            "nl",
-            "transcribe",
-            s(&wav),
-            "-l",
-            "de",
-            "--fake-script",
-            s(&script),
-        ]);
-        assert_eq!(r.code, 1);
-        assert_eq!(r.err, "Taal de wordt niet ondersteund door deze engine.\n");
-    }
-
-    #[test]
-    fn engine_failure_message() {
-        let loc = Localizer::new("en");
-        assert_eq!(
-            asr_message(&loc, &AsrError::Engine("out of memory".into())),
-            "Speech recognition failed: out of memory"
-        );
-    }
-
-    #[test]
-    fn unwritable_output_file() {
-        let dir = Scratch::new("unwritable");
-        let wav = dir.wav();
-        let target = dir.path("no-such-dir").join("out.json");
-        let r = saywut(&["--locale", "en", "transcribe", s(&wav), "-o", s(&target)]);
-        assert_eq!(r.code, 1);
-        assert!(r.err.starts_with("Could not write "), "{}", r.err);
-    }
-
-    #[test]
-    fn failing_stdout() {
-        struct Broken;
-        impl Write for Broken {
-            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-                Err(std::io::Error::other("pipe closed"))
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        let dir = Scratch::new("broken-stdout");
-        let wav = dir.wav();
-        let mut err = Vec::new();
-        let code = run(
-            ["saywut", "--locale", "en", "transcribe", s(&wav)],
-            &mut Broken,
-            &mut err,
-        );
-        assert_eq!(code, 1);
-        assert_eq!(
-            String::from_utf8(err).unwrap(),
-            "Could not write -: pipe closed\n"
-        );
-        assert!(Broken.flush().is_ok());
-    }
-
-    #[test]
-    fn system_locale_is_used_when_none_is_given() {
-        assert!(!system_locale().is_empty());
-    }
-}
+mod tests;

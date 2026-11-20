@@ -1,0 +1,15 @@
+[env]
+# whisper.cpp (built by whisper-rs-sys through the cmake crate) must be
+# optimized, or a 30 s clip takes minutes instead of seconds. Two things stand
+# in the way:
+#
+# 1. In debug builds whisper-rs-sys picks RelWithDebInfo, for which the cmake
+#    crate fills in no optimization flags. Its build script applies CMAKE_*
+#    variables from the environment last, so this forces Release; it also
+#    drops the WHISPER_DEBUG define it adds in debug builds.
+CMAKE_BUILD_TYPE = "Release"
+
+# 2. With MSVC even Release compiles unoptimized (see the included file); it
+#    adds /O2 for MSVC only, so GCC and Clang builds are untouched. Changing
+#    this does not rerun the build script: `cargo clean -p whisper-rs-sys`.
+CMAKE_PROJECT_INCLUDE = { value = "tools/cmake/msvc-release.cmake", relative = true }

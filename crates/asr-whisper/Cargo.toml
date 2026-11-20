@@ -1,0 +1,26 @@
+[package]
+name = "saywut-asr-whisper"
+description = "Whisper (whisper.cpp) speech recognition for Saywut."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+saywut-core = { path = "../saywut-core" }
+whisper-rs = "0.16.0"
+
+# GPU backends of whisper.cpp. Either one turns on GPU use; without them
+# whisper runs on the CPU. Building needs the CUDA Toolkit or the Vulkan SDK.
+[features]
+cuda = ["whisper-rs/cuda"]
+vulkan = ["whisper-rs/vulkan"]
+
+[dev-dependencies]
+saywut-capture-file = { path = "../capture-file" }
+saywut-models = { path = "../saywut-models" }
+
+[lints]
+workspace = true
