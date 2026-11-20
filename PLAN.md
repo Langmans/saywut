@@ -107,6 +107,43 @@ not a code change.
 - **Pruning**: files not referenced by the manifest are only removed by an
   explicit command (`saywut models prune`), never silently.
 
+## Distribution
+
+Tauri 2's bundler builds every format below from one config. Releases are built
+only by CI, never on a developer machine:
+
+- A `v*` tag starts a release workflow: the model gate first, then one job per
+  OS (`tauri-apps/tauri-action`) that builds, signs and uploads the installers
+  to a **draft** GitHub Release. Publishing the draft stays a manual step.
+- Each binary gets a GitHub artifact attestation (build provenance), so anyone
+  can verify it was built from that tag by that workflow.
+- Signing keys live only in GitHub secrets (Apple Developer ID and notarization
+  credentials, the Windows signing account, the updater key). Until they
+  exist, releases are unsigned and marked as such.
+- The build jobs install the Vulkan SDK; a CUDA build, if offered, is a
+  separate job (Windows and Linux only).
+
+- **macOS**: `.app` in a `.dmg` (drag to Applications). Must be signed with a
+  Developer ID and notarized by Apple, or Gatekeeper blocks it; this needs a
+  paid Apple Developer account. The Core Audio tap needs its usage description
+  and entitlement in the bundle. Universal binary (arm64 + x86_64).
+- **Windows**: NSIS `.exe` installer (per-user, no admin needed) as default;
+  MSI only if someone needs it for managed deployment. Tauri's installer
+  bootstraps WebView2 when missing. Unsigned builds trigger SmartScreen
+  warnings: sign with a code-signing certificate (Azure Trusted Signing is the
+  cheapest). Later also a winget manifest.
+- **Linux**: AppImage (one file, runs on most distros) plus `.deb`; `.rpm` and
+  Flatpak later. Per-app capture talks to PipeWire, which works outside a
+  sandbox; Flatpak would need the PipeWire portal permissions.
+- **Not in the installer**: models. They are downloaded on first use after the
+  user picks one (see Models), which keeps installers small and the user in
+  control of what is downloaded.
+- **GPU**: the default build carries the Vulkan backend (only the driver
+  needed). CUDA, if offered, is a separate download of the extra runtime
+  libraries, not part of every installer.
+- **Updates**: Tauri's updater with signed update manifests, opt-in, and never
+  touching models.
+
 ## Phases
 
 1. Spike: compare whisper, parakeet and voxtral on own nl/en/de recordings (WER,
@@ -122,6 +159,11 @@ not a code change.
 ## Open questions
 
 - Local only, or is a cloud API (e.g. Voxtral's) allowed as an option?
+- GPU backend in the installer: Vulkan (any vendor, only the driver needed,
+  small installer) as default with CUDA optional (faster on NVIDIA, but the
+  redistributable cuBLAS/cudart DLLs add hundreds of MB)? Measure both on the
+  RTX 3070 Laptop in the spike. The CUDA toolkit or Vulkan SDK is only needed
+  on the build machine, not by users.
 
 ## Manual checks (need real hardware or accounts)
 
