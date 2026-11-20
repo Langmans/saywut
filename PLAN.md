@@ -56,6 +56,15 @@ Spec first: a failing test, then the code (red, green).
   be excluded; those paths are on the manual checklist below.
 - i18n: every key exists in all three locales.
 
+## Dependency updates
+
+- Dependabot, weekly on Monday: one grouped PR for minor and patch updates per
+  ecosystem (Cargo, GitHub Actions; npm once the Tauri frontend exists), a
+  separate PR per major update.
+- A PR is merged only with green CI; no auto-merge.
+- Model files are pinned by hash and updated by hand, since an update can change
+  accuracy: rerun the regression budgets first.
+
 ## Phases
 
 1. Spike: compare whisper, parakeet and voxtral on own nl/en/de recordings (WER,
