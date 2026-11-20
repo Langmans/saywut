@@ -55,8 +55,9 @@ Spec first: a failing test, then the code (red, green).
 - E2E: `tauri-driver` + WebdriverIO, fed by `capture-file`.
 - Smoke: CI builds on all three OSes and transcribes a 5 s clip with the CLI.
 - Regression: fixed clips per language with WER and DER budgets (slow, opt-in).
-- Coverage: 100% lines, enforced in CI. Only the call that opens an OS device may
-  be excluded; those paths are on the manual checklist below.
+- Coverage: 100% lines, enforced in CI (Rust via cargo-llvm-cov, the frontend
+  via Vitest coverage thresholds at 100). Only the call that opens an OS device
+  may be excluded; those paths are on the manual checklist below.
 - i18n: every key exists in all three locales.
 
 ## Dependency updates
@@ -235,6 +236,14 @@ only by CI, never on a developer machine:
    audio and JSON while recording.
 5. Tauri desktop UI.
 6. More sources: device loopback and per-app capture, multitrack.
+
+## Reference projects
+
+Looked at for ideas, no code taken:
+
+- thewh1teagle/vibe: closest to Saywut (Tauri + whisper, offline).
+- Zackriya-Solutions/meetily: capturing and mixing several audio sources.
+- 0xkaz/rust-whisper-diarization: API shape only, a small demo.
 
 ## Open questions
 

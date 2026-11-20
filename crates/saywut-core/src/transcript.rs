@@ -66,6 +66,25 @@ impl std::fmt::Display for TranscriptError {
 
 impl std::error::Error for TranscriptError {}
 
+/// Why a speaker edit was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditError {
+    UnknownSpeaker(SpeakerId),
+    /// Merging a speaker into itself.
+    SameSpeaker(SpeakerId),
+}
+
+impl std::fmt::Display for EditError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownSpeaker(id) => write!(f, "no speaker with id {}", id.0),
+            Self::SameSpeaker(id) => write!(f, "speaker {} cannot be merged into itself", id.0),
+        }
+    }
+}
+
+impl std::error::Error for EditError {}
+
 impl Default for Transcript {
     fn default() -> Self {
         Self {
@@ -80,6 +99,42 @@ impl Default for Transcript {
 impl Transcript {
     pub fn speaker(&self, id: SpeakerId) -> Option<&Speaker> {
         self.speakers.iter().find(|s| s.id == id)
+    }
+
+    fn speaker_mut(&mut self, id: SpeakerId) -> Result<&mut Speaker, EditError> {
+        self.speakers
+            .iter_mut()
+            .find(|s| s.id == id)
+            .ok_or(EditError::UnknownSpeaker(id))
+    }
+
+    /// Names a speaker; a blank name makes it unnamed again.
+    pub fn rename_speaker(&mut self, id: SpeakerId, name: &str) -> Result<(), EditError> {
+        let name = name.trim();
+        self.speaker_mut(id)?.name = (!name.is_empty()).then(|| name.to_owned());
+        Ok(())
+    }
+
+    /// Moves every segment of `from` to `into` and removes `from`, for when
+    /// diarization split one person in two. `into` keeps its name, or takes
+    /// `from`'s when it has none.
+    pub fn merge_speakers(&mut self, from: SpeakerId, into: SpeakerId) -> Result<(), EditError> {
+        if from == into {
+            return Err(EditError::SameSpeaker(from));
+        }
+        self.speaker_mut(into)?;
+        let from_name = self.speaker_mut(from)?.name.take();
+        let target = self.speaker_mut(into)?;
+        if target.name.is_none() {
+            target.name = from_name;
+        }
+        self.speakers.retain(|s| s.id != from);
+        for seg in &mut self.segments {
+            if seg.speaker == Some(from) {
+                seg.speaker = Some(into);
+            }
+        }
+        Ok(())
     }
 
     /// Pretty-printed JSON, so the file diffs well and can be read by hand.
@@ -170,6 +225,62 @@ mod tests {
         let err = Transcript::from_json("{").unwrap_err();
         assert!(matches!(err, TranscriptError::Json(_)));
         assert!(err.to_string().starts_with("invalid transcript JSON"));
+    }
+
+    #[test]
+    fn rename_and_unname() {
+        let mut t = sample();
+        t.rename_speaker(SpeakerId(1), "  Anna ").unwrap();
+        assert_eq!(
+            t.speaker(SpeakerId(1)).unwrap().name.as_deref(),
+            Some("Anna")
+        );
+        t.rename_speaker(SpeakerId(1), " ").unwrap();
+        assert_eq!(t.speaker(SpeakerId(1)).unwrap().name, None);
+        let err = t.rename_speaker(SpeakerId(9), "X").unwrap_err();
+        assert_eq!(err, EditError::UnknownSpeaker(SpeakerId(9)));
+        assert_eq!(err.to_string(), "no speaker with id 9");
+    }
+
+    #[test]
+    fn merge_moves_segments_and_keeps_a_name() {
+        let mut t = sample();
+        t.segments[1].speaker = Some(SpeakerId(1));
+        // Unnamed 1 into named 0: 0 keeps "Ruben".
+        t.merge_speakers(SpeakerId(1), SpeakerId(0)).unwrap();
+        assert_eq!(t.speakers.len(), 1);
+        assert!(t.segments.iter().all(|s| s.speaker == Some(SpeakerId(0))));
+        assert_eq!(
+            t.speaker(SpeakerId(0)).unwrap().name.as_deref(),
+            Some("Ruben")
+        );
+
+        // Named into unnamed: the name moves along.
+        let mut t = sample();
+        t.merge_speakers(SpeakerId(0), SpeakerId(1)).unwrap();
+        assert_eq!(
+            t.speaker(SpeakerId(1)).unwrap().name.as_deref(),
+            Some("Ruben")
+        );
+        assert_eq!(t.segments[0].speaker, Some(SpeakerId(1)));
+        assert_eq!(t.segments[1].speaker, None);
+    }
+
+    #[test]
+    fn merge_refuses_bad_ids_without_changes() {
+        let mut t = sample();
+        let err = t.merge_speakers(SpeakerId(0), SpeakerId(0)).unwrap_err();
+        assert_eq!(err.to_string(), "speaker 0 cannot be merged into itself");
+        assert_eq!(
+            t.merge_speakers(SpeakerId(5), SpeakerId(0)),
+            Err(EditError::UnknownSpeaker(SpeakerId(5)))
+        );
+        // A named `from` keeps its name when `into` does not exist.
+        assert_eq!(
+            t.merge_speakers(SpeakerId(0), SpeakerId(5)),
+            Err(EditError::UnknownSpeaker(SpeakerId(5)))
+        );
+        assert_eq!(t, sample());
     }
 
     #[test]

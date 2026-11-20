@@ -15,3 +15,11 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# sherpa-rs-sys's build script links the debug C runtime (msvcrtd) whenever it
+# was itself compiled with debug assertions, which every dev build script is.
+# Next to whisper.cpp and Rust on the release runtime (msvcrt) that gives two
+# C runtimes in one process, and a file opened in one and read in the other
+# trips a CRT assertion. Build scripts never need debug assertions.
+[profile.dev.build-override]
+debug-assertions = false

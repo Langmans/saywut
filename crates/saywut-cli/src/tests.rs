@@ -18,15 +18,20 @@ impl Scratch {
 
     /// Two seconds of silence at 16 kHz.
     fn wav(&self) -> PathBuf {
+        self.wav_at(16_000)
+    }
+
+    /// Two seconds of silence at `rate`.
+    fn wav_at(&self, rate: u32) -> PathBuf {
         let path = self.path("in.wav");
         let spec = WavSpec {
             channels: 1,
-            sample_rate: 16_000,
+            sample_rate: rate,
             bits_per_sample: 16,
             sample_format: SampleFormat::Int,
         };
         let mut w = WavWriter::create(&path, spec).unwrap();
-        for _ in 0..32_000 {
+        for _ in 0..rate * 2 {
             w.write_sample(0_i16).unwrap();
         }
         w.finalize().unwrap();
@@ -278,11 +283,15 @@ fn system_defaults() {
 
 // --- whisper and models ---
 
+/// Whisper and diarization together on the two-voice clip: the lines
+/// alternate between Speaker 1 and Speaker 2.
 #[test]
-fn whisper_transcribes_a_clip() {
+fn whisper_transcribes_and_diarizes_a_clip() {
     let wav = repo().join("testdata/tts/en-dialogue.wav");
     let models = repo().join("models");
     let r = saywut(&[
+        "--locale",
+        "en",
         "--model-dir",
         s(&models),
         "transcribe",
@@ -291,9 +300,124 @@ fn whisper_transcribes_a_clip() {
         "en",
         "-f",
         "txt",
+        "--diarize",
+        "--speakers",
+        "2",
     ]);
     assert_eq!(r.code, 0, "{}", r.err);
     assert!(r.out.to_lowercase().contains("report"), "{}", r.out);
+    // "[00:00:05] Speaker 2: Almost. ..." -> "Speaker 2"
+    let speakers: Vec<&str> = r
+        .out
+        .lines()
+        .filter_map(|l| l.split_once("] ")?.1.split_once(": "))
+        .map(|(who, _)| who)
+        .collect();
+    assert_eq!(speakers[..2], ["Speaker 1", "Speaker 2"], "{}", r.out);
+}
+
+#[test]
+fn diarize_errors() {
+    let dir = Scratch::new("diarize-errors");
+    // Models missing.
+    let r = fake(
+        &dir.wav(),
+        None,
+        &["--locale", "en", "--model-dir", s(&dir.0), "--diarize"],
+    );
+    assert_eq!(
+        r.err,
+        "Model pyannote-segmentation-3 is not downloaded yet. \
+         Run: saywut models fetch pyannote-segmentation-3\n"
+    );
+    // Wrong sample rate: the fake engine accepts it, the diarizer does not.
+    let models = repo().join("models");
+    let r = fake(
+        &dir.wav_at(8_000),
+        None,
+        &["--locale", "en", "--model-dir", s(&models), "--diarize"],
+    );
+    assert_eq!(r.code, 1);
+    assert!(
+        r.err.starts_with("Diarization failed: needs 16000 Hz"),
+        "{}",
+        r.err
+    );
+    // --speakers needs --diarize, and at least 1.
+    assert_eq!(fake(&dir.wav(), None, &["--speakers", "2"]).code, 2);
+    assert_eq!(
+        fake(&dir.wav(), None, &["--diarize", "--speakers", "0"]).code,
+        2
+    );
+}
+
+// --- speakers ---
+
+const TWO_SPEAKERS: &str = r#"{
+    "version": 1,
+    "speakers": [{"id": 0, "name": "Ruben"}, {"id": 1}],
+    "segments": [
+        {"start_ms": 0, "end_ms": 900, "speaker": 0, "text": "Hallo."},
+        {"start_ms": 1000, "end_ms": 1800, "speaker": 1, "text": "Hoi."},
+        {"start_ms": 2000, "end_ms": 2800, "speaker": 1, "text": "Alles goed?"}
+    ]
+}"#;
+
+fn speakers_cmd(args: &[&str]) -> Run {
+    saywut(&[&["--locale", "nl", "speakers"], args].concat())
+}
+
+#[test]
+fn speakers_list_rename_merge() {
+    let dir = Scratch::new("speakers");
+    let file = dir.script(TWO_SPEAKERS);
+    let f = s(&file);
+
+    let r = speakers_cmd(&["list", f]);
+    assert_eq!(r.out, "1  Ruben  1 regel\n2  Spreker 2  2 regels\n");
+
+    assert_eq!(speakers_cmd(&["rename", f, "2", "Anna"]).code, 0);
+    assert!(speakers_cmd(&["list", f]).out.contains("2  Anna  2 regels"));
+
+    assert_eq!(speakers_cmd(&["merge", f, "1", "2"]).code, 0);
+    assert_eq!(speakers_cmd(&["list", f]).out, "2  Anna  3 regels\n");
+    let t = Transcript::from_json(&fs::read_to_string(&file).unwrap()).unwrap();
+    assert!(t.segments.iter().all(|s| s.speaker == Some(SpeakerId(1))));
+}
+
+#[test]
+fn speakers_errors() {
+    let dir = Scratch::new("speakers-errors");
+    let file = dir.script(TWO_SPEAKERS);
+    let f = s(&file);
+
+    let r = speakers_cmd(&["rename", f, "5", "X"]);
+    assert_eq!(
+        (r.code, r.err.as_str()),
+        (1, "Er is geen spreker 5 in dit transcript.\n")
+    );
+    let r = speakers_cmd(&["merge", f, "2", "2"]);
+    assert_eq!(
+        r.err,
+        "Spreker 2 kan niet met zichzelf worden samengevoegd.\n"
+    );
+    assert_eq!(speakers_cmd(&["rename", f, "0", "X"]).code, 2);
+
+    let r = speakers_cmd(&["list", s(&dir.path("missing.json"))]);
+    assert!(r.err.starts_with("Kon transcript "), "{}", r.err);
+    let broken = dir.path("broken.json");
+    fs::write(&broken, "{").unwrap();
+    let r = speakers_cmd(&["list", s(&broken)]);
+    assert!(r.err.contains("invalid transcript JSON"), "{}", r.err);
+
+    // The temporary file cannot be written: the transcript stays as it was.
+    let mut tmp = file.as_os_str().to_owned();
+    tmp.push(".tmp");
+    fs::create_dir(&tmp).unwrap();
+    let r = speakers_cmd(&["rename", f, "2", "Anna"]);
+    assert_eq!(r.code, 1);
+    assert!(r.err.starts_with("Kon "), "{}", r.err);
+    assert_eq!(fs::read_to_string(&file).unwrap(), TWO_SPEAKERS);
 }
 
 #[test]

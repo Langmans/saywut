@@ -1,0 +1,26 @@
+[package]
+name = "saywut-diarize-sherpa"
+description = "Speaker diarization and voice embeddings for Saywut via sherpa-onnx."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+saywut-core = { path = "../saywut-core" }
+# download-binaries fetches prebuilt sherpa-onnx and onnxruntime libraries
+# (shared) from sherpa-onnx's GitHub releases at build time; tts is not needed.
+# Its build script copies the DLLs into target/<profile>/deps, a folder cargo's
+# current build-dir layout no longer creates, so that folder must exist before
+# building (see README). The static variant is no way out: it misses
+# advapi32 when sherpa-rs links itself and mixes /MT into our /MD runtime.
+sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries"] }
+
+[dev-dependencies]
+saywut-capture-file = { path = "../capture-file" }
+saywut-models = { path = "../saywut-models" }
+
+[lints]
+workspace = true

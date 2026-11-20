@@ -5,8 +5,11 @@
 //!   transcript JSON given with `--fake-script`.
 //! - `saywut models list|fetch`: the models from the manifest and verified
 //!   downloads of them.
+//! - `saywut speakers list|rename|merge`: edit the speakers of a transcript.
 //!
 //! Messages are localized; clap's own help and usage text is English.
+
+mod speakers;
 
 use std::{
     ffi::OsString,
@@ -19,15 +22,21 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use saywut_asr_whisper::WhisperAsr;
 use saywut_core::{
     asr::{AsrEngine, AsrError, FakeAsr},
+    diarize::Diarizer,
     export,
-    pipeline::transcribe_file,
+    pipeline::{apply_diarization, transcribe_file},
     transcript::{SpeakerId, Transcript},
 };
+use saywut_diarize_sherpa::SherpaDiarizer;
 use saywut_i18n::{FALLBACK, FluentValue, Localizer};
 use saywut_models::{Manifest, Model, ModelError, Opener};
 
 /// Languages the fake engine accepts when its script names none.
 const FAKE_LANGUAGES: [&str; 3] = ["en", "nl", "de"];
+
+/// Manifest ids of the diarization models.
+const SEGMENTATION_MODEL: &str = "pyannote-segmentation-3";
+const EMBEDDING_MODEL: &str = "campplus-voxceleb";
 
 #[derive(Parser)]
 #[command(
@@ -57,6 +66,9 @@ enum Command {
     /// List or download speech models.
     #[command(subcommand)]
     Models(ModelsCommand),
+    /// Show, name or merge the speakers of a transcript JSON (edited in place).
+    #[command(subcommand)]
+    Speakers(speakers::SpeakersCommand),
 }
 
 #[derive(Subcommand)]
@@ -98,6 +110,15 @@ struct TranscribeArgs {
     /// Transcript JSON whose segments the fake engine plays back.
     #[arg(long)]
     fake_script: Option<PathBuf>,
+
+    /// Label who speaks when (needs the diarization models, see
+    /// `saywut models list`).
+    #[arg(long)]
+    diarize: bool,
+
+    /// Number of speakers, if known; otherwise they are found automatically.
+    #[arg(long, requires = "diarize", value_parser = clap::value_parser!(u32).range(1..))]
+    speakers: Option<u32>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -147,6 +168,7 @@ where
         Command::Models(ModelsCommand::Fetch { id }) => {
             fetch_model(&id, &loc, &model_dir, open, out)
         }
+        Command::Speakers(cmd) => speakers::run(cmd, &loc, out),
     };
     match result {
         Ok(()) => 0,
@@ -163,6 +185,12 @@ fn system_locale() -> String {
 
 fn default_model_dir() -> PathBuf {
     dirs::data_local_dir().map_or(PathBuf::from("models"), |d| d.join("saywut").join("models"))
+}
+
+/// "Speaker 1" etc. for a speaker without a name; ids count from 0, labels
+/// from 1.
+fn speaker_label(loc: &Localizer, id: SpeakerId) -> String {
+    loc.message("speaker-label", &[("n", (u64::from(id.0) + 1).into())])
 }
 
 fn path_value(path: &Path) -> FluentValue<'static> {
@@ -185,6 +213,30 @@ fn find_model<'m>(manifest: &'m Manifest, id: &str, loc: &Localizer) -> Result<&
     manifest
         .get(id)
         .map_err(|_| loc.message("error-model-unknown", &[("id", id.to_owned().into())]))
+}
+
+/// The manifest entry and file of a model that is downloaded and intact.
+/// The file is re-hashed on every load: a damaged file must not reach an
+/// engine.
+fn usable_model(id: &str, loc: &Localizer, model_dir: &Path) -> Result<(Model, PathBuf), String> {
+    let manifest = Manifest::builtin();
+    let model = find_model(&manifest, id, loc)?.clone();
+    let path = model.path(model_dir);
+    let id: FluentValue = model.id.clone().into();
+    if !path.is_file() {
+        return Err(loc.message("error-model-missing", &[("id", id)]));
+    }
+    saywut_models::verify(&model, &path).map_err(|e| {
+        loc.message(
+            "error-model-corrupt",
+            &[
+                ("id", id.clone()),
+                ("path", path_value(&path)),
+                ("reason", e.to_string().into()),
+            ],
+        )
+    })?;
+    Ok((model, path))
 }
 
 /// The engine chosen on the command line. The outer error is a finished,
@@ -217,26 +269,8 @@ fn engine(
             })))
         }
         Engine::Whisper => {
-            let manifest = Manifest::builtin();
-            let model = find_model(&manifest, &args.model, loc)?;
-            let path = model.path(model_dir);
-            let id: FluentValue = model.id.clone().into();
-            if !path.is_file() {
-                return Err(loc.message("error-model-missing", &[("id", id)]));
-            }
-            // Re-hash on every load: a damaged file must not reach whisper.
-            saywut_models::verify(model, &path).map_err(|e| {
-                loc.message(
-                    "error-model-corrupt",
-                    &[
-                        ("id", id.clone()),
-                        ("path", path_value(&path)),
-                        ("reason", e.to_string().into()),
-                    ],
-                )
-            })?;
-            Ok(WhisperAsr::load(&path, model.languages.clone())
-                .map(|e| Box::new(e) as Box<dyn AsrEngine>))
+            let (model, path) = usable_model(&args.model, loc, model_dir)?;
+            Ok(WhisperAsr::load(&path, model.languages).map(|e| Box::new(e) as Box<dyn AsrEngine>))
         }
     }
 }
@@ -256,12 +290,20 @@ fn transcribe(
             ],
         )
     })?;
-    let transcript = engine(args, loc, model_dir)?
+    let mut transcript = engine(args, loc, model_dir)?
         .and_then(|mut engine| transcribe_file(engine.as_mut(), &audio, args.language.as_deref()))
         .map_err(|e| asr_message(loc, &e))?;
 
-    let fallback =
-        |id: SpeakerId| loc.message("speaker-label", &[("n", (u64::from(id.0) + 1).into())]);
+    if args.diarize {
+        let (_, segmentation) = usable_model(SEGMENTATION_MODEL, loc, model_dir)?;
+        let (_, embedding) = usable_model(EMBEDDING_MODEL, loc, model_dir)?;
+        let turns = SherpaDiarizer::load(&segmentation, &embedding, args.speakers)
+            .and_then(|mut diarizer| diarizer.diarize(&audio))
+            .map_err(|e| loc.message("error-diarize", &[("reason", e.0.into())]))?;
+        apply_diarization(&mut transcript, turns);
+    }
+
+    let fallback = |id: SpeakerId| speaker_label(loc, id);
     let text = match args.format {
         Format::Json => transcript.to_json() + "\n",
         Format::Srt => export::to_srt(&transcript, &fallback),

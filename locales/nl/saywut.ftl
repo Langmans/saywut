@@ -9,6 +9,17 @@ error-write-output = Kon { $path } niet schrijven: { $reason }
 error-unsupported-language = Taal { $language } wordt niet ondersteund door deze engine.
 error-asr-engine = Spraakherkenning mislukt: { $reason }
 
+error-diarize = Sprekerherkenning mislukt: { $reason }
+error-read-transcript = Kon transcript { $path } niet lezen: { $reason }
+error-speaker-unknown = Er is geen spreker { $n } in dit transcript.
+error-speaker-same = Spreker { $n } kan niet met zichzelf worden samengevoegd.
+
+# One line of `saywut speakers list`: number, name or label, number of lines.
+speakers-list-line = { $n }  { $label }  { $lines ->
+    [one] 1 regel
+   *[other] { $lines } regels
+}
+
 error-model-unknown = Onbekend model { $id }. Zie: saywut models list
 error-model-missing = Model { $id } is nog niet gedownload. Voer uit: saywut models fetch { $id }
 error-model-corrupt = Modelbestand { $path } is beschadigd ({ $reason }). Voer uit: saywut models fetch { $id }

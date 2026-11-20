@@ -18,6 +18,7 @@ dirs = "7.0.0"
 saywut-asr-whisper = { path = "../asr-whisper" }
 saywut-capture-file = { path = "../capture-file" }
 saywut-core = { path = "../saywut-core" }
+saywut-diarize-sherpa = { path = "../diarize-sherpa" }
 saywut-i18n = { path = "../saywut-i18n" }
 saywut-models = { path = "../saywut-models" }
 sys-locale = "0.3.2"

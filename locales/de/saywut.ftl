@@ -9,6 +9,17 @@ error-write-output = { $path } konnte nicht geschrieben werden: { $reason }
 error-unsupported-language = Die Sprache { $language } wird von dieser Engine nicht unterstützt.
 error-asr-engine = Spracherkennung fehlgeschlagen: { $reason }
 
+error-diarize = Sprechererkennung fehlgeschlagen: { $reason }
+error-read-transcript = Transkript { $path } konnte nicht gelesen werden: { $reason }
+error-speaker-unknown = In diesem Transkript gibt es keinen Sprecher { $n }.
+error-speaker-same = Sprecher { $n } kann nicht mit sich selbst zusammengeführt werden.
+
+# One line of `saywut speakers list`: number, name or label, number of lines.
+speakers-list-line = { $n }  { $label }  { $lines ->
+    [one] 1 Zeile
+   *[other] { $lines } Zeilen
+}
+
 error-model-unknown = Unbekanntes Modell { $id }. Siehe: saywut models list
 error-model-missing = Modell { $id } ist noch nicht heruntergeladen. Ausführen: saywut models fetch { $id }
 error-model-corrupt = Modelldatei { $path } ist beschädigt ({ $reason }). Ausführen: saywut models fetch { $id }

@@ -104,9 +104,15 @@ in Windows (error C1083). Build from a short target directory, e.g. set
 short enough.
 
 ```sh
+mkdir -p target/debug/deps target/llvm-cov-target/debug/deps
 cargo test --workspace
 cargo llvm-cov --workspace --fail-under-lines 100
 ```
+
+The `mkdir` is needed once: the sherpa-onnx bindings copy their DLLs into a
+`target/<profile>/deps` folder that current cargo no longer creates. The
+model tests need the models (`saywut models fetch <id>` for every id in
+`models.toml`) and the TTS clips (see Test audio).
 
 Coverage in the editor (Coverage Gutters reads `lcov.info`):
 
