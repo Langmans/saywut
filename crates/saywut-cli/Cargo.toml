@@ -1,0 +1,26 @@
+[package]
+name = "saywut-cli"
+description = "Command line for Saywut: transcribe an audio file."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "saywut"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.9", features = ["derive"] }
+saywut-capture-file = { path = "../capture-file" }
+saywut-core = { path = "../saywut-core" }
+saywut-i18n = { path = "../saywut-i18n" }
+sys-locale = "0.3.2"
+
+[dev-dependencies]
+hound = "3.5.1"
+
+[lints]
+workspace = true

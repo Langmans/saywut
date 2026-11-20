@@ -1,0 +1,17 @@
+[package]
+name = "saywut-i18n"
+description = "Fluent localization shared by the Saywut CLI and UI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+fluent-bundle = "0.16.0"
+fluent-syntax = "0.12.0"
+unic-langid = "0.9.6"
+
+[lints]
+workspace = true

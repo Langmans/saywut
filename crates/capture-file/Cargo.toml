@@ -1,0 +1,16 @@
+[package]
+name = "saywut-capture-file"
+description = "Reads audio files into Saywut's core audio type."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+hound = "3.5.1"
+saywut-core = { path = "../saywut-core" }
+
+[lints]
+workspace = true

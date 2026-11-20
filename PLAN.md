@@ -17,6 +17,9 @@ A narrow panel that sits next to a separate browser, with an always-on-top toggl
 source chips, a horizontal meter per source, the scrolling transcript with speaker
 labels. Partial lines are shown in italics until final. No embedded browser.
 
+Light and dark theme, following the OS setting with a manual override (lower
+priority than the rest of phase 5).
+
 ## Architecture
 
 Ports and adapters. `saywut-core` holds the traits and all pure logic; adapters are
