@@ -1,13 +1,7 @@
-//! Events of a live session: what a running session reports to the UI.
-//!
-//! A session sends [`LiveEvent::Started`] first and [`LiveEvent::Stopped`]
-//! last. In between it sends levels, partial lines and final lines for each
-//! source. Each source has at most one partial line at a time: a new
-//! [`LiveEvent::Partial`] replaces the previous one for that source, and a
-//! [`LiveEvent::Final`] replaces it with the finished segment.
-//!
-//! Events serialize as JSON objects tagged by `"kind"`, which is the shape the
-//! frontend receives.
+//! Events of a live session: what a running session reports to the UI,
+//! from [`LiveEvent::Started`] to [`LiveEvent::Stopped`], with at most one
+//! partial line per source at a time. Serialized as JSON tagged by `"kind"`;
+//! see the crate README.
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +17,7 @@ pub struct SourceId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
+    /// A microphone or other input device.
     Microphone,
     /// Everything an output device plays.
     Loopback,
@@ -32,9 +27,12 @@ pub enum SourceKind {
     File,
 }
 
+/// One audio source of a session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Source {
+    /// Its id within the session.
     pub id: SourceId,
+    /// What it captures.
     pub kind: SourceKind,
     /// Device, application or file name as the system reports it; not
     /// localized.
@@ -44,34 +42,51 @@ pub struct Source {
 /// Text recognized so far for a stretch of speech that is not final yet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartialLine {
+    /// Start, in ms since the session started.
     pub start_ms: u64,
+    /// Who speaks, if already known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<SpeakerId>,
+    /// The text so far.
     pub text: String,
 }
 
-/// Times are milliseconds since the session started.
+/// What a running session reports. Times are milliseconds since the session
+/// started.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LiveEvent {
+    /// The session runs; always the first event.
     Started {
+        /// The sources it records.
         sources: Vec<Source>,
     },
     /// RMS level of the audio a source captured up to `at_ms`.
     Level {
+        /// The source measured.
         source: SourceId,
+        /// End of the measured audio.
         at_ms: u64,
+        /// Level in dBFS, never below [`MIN_DBFS`](crate::level::MIN_DBFS).
         dbfs: f32,
     },
+    /// The current not-yet-final line of a source, replacing the previous one.
     Partial {
+        /// The source speaking.
         source: SourceId,
+        /// The line so far.
         line: PartialLine,
     },
+    /// A finished segment, replacing the source's partial line.
     Final {
+        /// The source speaking.
         source: SourceId,
+        /// The finished segment.
         segment: Segment,
     },
+    /// The session ended; always the last event.
     Stopped {
+        /// When it ended.
         at_ms: u64,
     },
 }

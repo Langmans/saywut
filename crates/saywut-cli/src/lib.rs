@@ -1,16 +1,6 @@
-//! The `saywut` command line.
-//!
-//! - `saywut transcribe <file>`: an audio file in, a transcript out, with
-//!   whisper or with the fake engine, which replays the segments of a
-//!   transcript JSON given with `--fake-script`.
-//! - `saywut models list|fetch`: the models from the manifest and verified
-//!   downloads of them.
-//! - `saywut speakers list|suggest|rename|merge`: edit the speakers of a
-//!   transcript.
-//! - `saywut profiles list|add|delete`: local voice profiles, used by
-//!   `transcribe --diarize --recognize` to name known voices.
-//!
-//! Messages are localized; clap's own help and usage text is English.
+//! The `saywut` command line: `transcribe`, `models`, `speakers` and
+//! `profiles`; usage is in the repository README ("Using the CLI"). Messages
+//! are localized; clap's own help and usage text is English.
 
 mod profiles;
 mod speakers;

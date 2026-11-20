@@ -37,7 +37,9 @@ impl NamePattern {
 /// A name heard in a segment, for a speaker who has none yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NameSuggestion {
+    /// The speaker who said it.
     pub speaker: SpeakerId,
+    /// The name heard.
     pub name: String,
     /// Index of the segment it was heard in.
     pub segment: usize,
@@ -53,6 +55,7 @@ fn words(text: &str) -> impl Iterator<Item = &str> {
 /// The phrases and name particles of one or more languages.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NamingRules {
+    /// Phrases that introduce a name.
     pub patterns: Vec<NamePattern>,
     /// Lowercase words allowed inside a name ("de" in "Anna de Vries").
     pub particles: Vec<String>,

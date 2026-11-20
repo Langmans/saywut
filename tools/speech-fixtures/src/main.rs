@@ -1,22 +1,6 @@
 //! Builds the committed speech clips in `testdata/speech/` from FLEURS
-//! (google/fleurs, CC-BY 4.0) recordings.
-//!
-//! ```sh
-//! cargo run --manifest-path tools/speech-fixtures/Cargo.toml -- <fleurs-dir> testdata/speech
-//! ```
-//!
-//! `<fleurs-dir>` holds `<lang>/dev.tsv` and `<lang>/dev/<file>.wav` from the
-//! dataset's `dev` split (revision 70bb2e84b976b7e960aa89f1c648e09c59f894dd),
-//! with at least the files named below extracted. Output is 16 kHz mono
-//! 16-bit WAV plus a transcript JSON per clip:
-//!
-//! - `nl.wav`, `en.wav`, `de.wav`: one sentence each, with its exact text,
-//!   for recognition tests.
-//! - `two-voices.wav`: two Dutch recordings by different people. Each is cut
-//!   at its quietest point near the middle and the halves alternate A, B, A,
-//!   B, so both voices speak twice. Only the times and speakers of its JSON
-//!   are a reference; the text of a half is the whole sentence marked with
-//!   the half.
+//! (CC BY 4.0) recordings, and with `--probe` checks that two recordings are
+//! different voices. Usage and the clips it makes: see the README.
 
 use std::{fs, path::Path};
 

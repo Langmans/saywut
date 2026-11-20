@@ -7,11 +7,14 @@ use crate::transcript::Segment;
 /// Mono PCM, samples in -1.0..=1.0.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Audio {
+    /// Samples per second.
     pub sample_rate: u32,
+    /// The samples, one channel.
     pub samples: Vec<f32>,
 }
 
 impl Audio {
+    /// Length in whole milliseconds; 0 for a zero sample rate.
     pub fn duration_ms(&self) -> u64 {
         if self.sample_rate == 0 {
             return 0;
@@ -20,6 +23,7 @@ impl Audio {
     }
 }
 
+/// Why speech recognition failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AsrError {
     /// The engine does not offer this BCP-47 language.
@@ -39,6 +43,7 @@ impl std::fmt::Display for AsrError {
 
 impl std::error::Error for AsrError {}
 
+/// A speech recognition engine (whisper, parakeet, ...).
 pub trait AsrEngine {
     /// BCP-47 tags this engine can transcribe. The UI offers exactly these,
     /// so adding a language never touches the core.
@@ -57,7 +62,9 @@ pub trait AsrEngine {
 /// Returns scripted segments, clipped to the length of the audio it is given.
 #[derive(Debug, Clone, Default)]
 pub struct FakeAsr {
+    /// What [`AsrEngine::languages`] reports and accepts.
     pub languages: Vec<String>,
+    /// The segments it returns.
     pub script: Vec<Segment>,
 }
 

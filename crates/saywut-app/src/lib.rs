@@ -1,15 +1,7 @@
 //! Saywut desktop app: a narrow panel with source chips, a level meter per
-//! source and the live transcript.
-//!
-//! Rust owns the session and the strings; the frontend in `ui/` only
-//! renders. A session runs on its own thread and sends every [`LiveEvent`]
-//! to the window as a [`EVENT`] event. Until real capture exists, the
-//! session is a [`FakeSession`] replaying a clip with its transcript JSON,
-//! by default the committed `testdata/speech/two-voices`.
-//!
-//! Each start bumps a generation number. A session thread forwards events
-//! only while its generation is current, so a session that was replaced
-//! falls silent at once, even while its clock is still sleeping.
+//! source and the live transcript. Rust owns the session and the strings and
+//! sends every [`LiveEvent`] to the window as an [`EVENT`] event; the session
+//! is still a [`FakeSession`]. See the README for how restarts stay safe.
 
 use std::{
     collections::BTreeMap,
@@ -39,6 +31,7 @@ pub fn default_clip() -> PathBuf {
 
 type MakeClock = fn() -> Box<dyn Clock + Send>;
 
+/// What the app keeps between commands: the clip and the running session.
 pub struct AppState {
     clip: PathBuf,
     locale: &'static str,

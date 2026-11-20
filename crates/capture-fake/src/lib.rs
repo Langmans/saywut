@@ -1,15 +1,7 @@
 //! A live session replayed from a WAV file and its reference transcript, so
 //! the UI can be built and tested without a microphone or a speech model.
-//!
-//! The replay is computed up front as a timeline of [`LiveEvent`]s:
-//!
-//! - a level every [`FRAME_MS`] of audio, measured over that frame;
-//! - for each segment, a partial line that grows one word at a time between
-//!   its start and end, then the final line at `end_ms`;
-//! - `Started` first and `Stopped` once both audio and transcript are over.
-//!
-//! [`FakeSession::run`] then plays the timeline against a [`Clock`], which
-//! the tests replace so they run instantly.
+//! The replay is a precomputed timeline of [`LiveEvent`]s (levels, growing
+//! partial lines, final lines) played against a [`Clock`]; see the README.
 
 use std::{
     ops::ControlFlow,
@@ -30,6 +22,7 @@ pub const FRAME_MS: u64 = 50;
 
 /// Waits until a point in session time.
 pub trait Clock {
+    /// Returns once session time `at_ms` has come; at once if it has passed.
     fn wait_until(&mut self, at_ms: u64);
 }
 
@@ -39,6 +32,7 @@ pub struct RealClock {
 }
 
 impl RealClock {
+    /// A clock whose session time starts now.
     pub fn start() -> Self {
         Self {
             start: Instant::now(),
@@ -61,10 +55,14 @@ impl Clock for NoWait {
     fn wait_until(&mut self, _at_ms: u64) {}
 }
 
+/// Why a clip could not be opened.
 #[derive(Debug)]
 pub enum FakeError {
+    /// The WAV file.
     Wav(WavError),
+    /// Reading the transcript JSON next to it.
     Read(std::io::Error),
+    /// Parsing that transcript.
     Transcript(TranscriptError),
 }
 
@@ -80,6 +78,7 @@ impl std::fmt::Display for FakeError {
 
 impl std::error::Error for FakeError {}
 
+/// A live session replayed from a clip and its transcript.
 pub struct FakeSession {
     speakers: Vec<Speaker>,
     timeline: Vec<(u64, LiveEvent)>,
@@ -103,6 +102,7 @@ impl FakeSession {
         Ok(Self::new(source, &audio, &transcript))
     }
 
+    /// Replays `audio` as `source`, with `transcript`'s segments as its lines.
     pub fn new(source: Source, audio: &Audio, transcript: &Transcript) -> Self {
         Self {
             speakers: speakers(transcript),

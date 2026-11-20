@@ -15,6 +15,7 @@ pub fn read_wav(path: &Path) -> Result<Audio, WavError> {
     read_wav_from(WavReader::open(path)?)
 }
 
+/// [`read_wav`] for a WAV that is already open, e.g. in memory.
 pub fn read_wav_from<R: Read>(reader: WavReader<R>) -> Result<Audio, WavError> {
     let spec = reader.spec();
     let samples: Vec<f32> = match spec.sample_format {

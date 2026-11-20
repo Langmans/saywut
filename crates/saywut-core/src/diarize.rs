@@ -11,11 +11,15 @@ use crate::transcript::{Segment, SpeakerId};
 /// A stretch of audio in which one speaker talks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Turn {
+    /// Start, in ms from the start of the audio.
     pub start_ms: u64,
+    /// End, in ms from the start of the audio.
     pub end_ms: u64,
+    /// Who speaks.
     pub speaker: SpeakerId,
 }
 
+/// Why diarization or a voice embedding failed, as the engine reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiarizeError(pub String);
 
@@ -27,6 +31,7 @@ impl std::fmt::Display for DiarizeError {
 
 impl std::error::Error for DiarizeError {}
 
+/// Finds who speaks when in a recording.
 pub trait Diarizer {
     /// Speaker turns over all of `audio`, ordered by start. Speaker ids are
     /// numbered from 0 in order of first appearance.
@@ -36,6 +41,7 @@ pub trait Diarizer {
 /// Returns scripted turns, clipped to the length of the audio.
 #[derive(Debug, Clone, Default)]
 pub struct FakeDiarizer {
+    /// The turns it returns.
     pub turns: Vec<Turn>,
 }
 

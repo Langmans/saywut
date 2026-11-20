@@ -14,31 +14,58 @@ use sha2::{Digest, Sha256};
 /// can never disagree.
 const BUILTIN: &str = include_str!("../../../models.toml");
 
+/// One model file, pinned to an exact download.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Model {
+    /// Stable id, e.g. `whisper-base`; also part of the file name.
     pub id: String,
+    /// Engine that uses it; the folder it is stored in.
     pub engine: String,
+    /// Download URL, pinned to a revision.
     pub url: String,
+    /// Expected sha256, 64 lowercase hex digits.
     pub sha256: String,
+    /// Expected size in bytes.
     pub size: u64,
+    /// SPDX license of the model.
     pub license: String,
+    /// BCP-47 tags Saywut offers it for; empty for any language.
     pub languages: Vec<String>,
 }
 
+/// All models Saywut knows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Manifest {
+    /// The entries, in manifest order.
     pub models: Vec<Model>,
 }
 
+/// Why a manifest, lookup, download or check failed.
 #[derive(Debug)]
 pub enum ModelError {
+    /// The manifest does not parse or an entry is invalid.
     Manifest(String),
+    /// No model with this id.
     UnknownModel(String),
+    /// Reading or writing a file failed.
     Io(io::Error),
+    /// The download itself failed.
     Download(String),
-    SizeMismatch { expected: u64, actual: u64 },
-    HashMismatch { expected: String, actual: String },
+    /// The file has the wrong size.
+    SizeMismatch {
+        /// Size from the manifest.
+        expected: u64,
+        /// Size of the file.
+        actual: u64,
+    },
+    /// The file has the wrong sha256.
+    HashMismatch {
+        /// Hash from the manifest.
+        expected: String,
+        /// Hash of the file.
+        actual: String,
+    },
 }
 
 impl fmt::Display for ModelError {
@@ -74,6 +101,7 @@ fn is_slug(s: &str) -> bool {
 }
 
 impl Manifest {
+    /// The repository's `models.toml`, embedded at build time.
     pub fn builtin() -> Self {
         Self::parse(BUILTIN).expect("models.toml is valid")
     }
@@ -115,6 +143,7 @@ impl Manifest {
         Ok(Self { models: file.model })
     }
 
+    /// The entry with this id.
     pub fn get(&self, id: &str) -> Result<&Model, ModelError> {
         self.models
             .iter()
@@ -194,6 +223,8 @@ pub fn verify(model: &Model, path: &Path) -> Result<(), ModelError> {
 /// Opens `url` for reading; [`http_get`] in production, a fake in tests.
 pub type Opener<'a> = &'a dyn Fn(&str) -> Result<Box<dyn Read>, ModelError>;
 
+/// Opens `url` with an HTTPS GET; following redirects, failing on an error
+/// status.
 pub fn http_get(url: &str) -> Result<Box<dyn Read>, ModelError> {
     let response = ureq::get(url)
         .call()

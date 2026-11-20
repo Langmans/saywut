@@ -16,6 +16,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 /// Whisper models are trained on 16 kHz mono.
 pub const SAMPLE_RATE: u32 = 16_000;
 
+/// A loaded whisper model.
 pub struct WhisperAsr {
     ctx: WhisperContext,
     languages: Vec<String>,
@@ -31,6 +32,7 @@ fn engine_error(e: impl std::fmt::Display) -> AsrError {
 }
 
 impl WhisperAsr {
+    /// Loads a ggml model file; `languages` are the BCP-47 tags to offer.
     pub fn load(model: &Path, languages: Vec<String>) -> Result<Self, AsrError> {
         // Route whisper.cpp's own logging away from stderr; without a `log`
         // backend it is dropped.

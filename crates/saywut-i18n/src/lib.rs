@@ -50,6 +50,7 @@ fn message_ids(resource: &FluentResource) -> Vec<String> {
         .collect()
 }
 
+/// The UI strings of one locale.
 pub struct Localizer {
     tag: &'static str,
     ids: Vec<String>,
@@ -57,6 +58,7 @@ pub struct Localizer {
 }
 
 impl Localizer {
+    /// The best embedded locale for a BCP-47 tag (see [`negotiate`]).
     pub fn new(requested: &str) -> Self {
         let tag = negotiate(requested);
         let source = LOCALES.iter().find(|(t, _)| *t == tag).unwrap().1;
@@ -72,6 +74,7 @@ impl Localizer {
         Self { tag, ids, bundle }
     }
 
+    /// Tag of the locale actually used.
     pub fn tag(&self) -> &'static str {
         self.tag
     }

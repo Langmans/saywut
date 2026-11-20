@@ -1,11 +1,7 @@
 //! Voice profiles: one voice embedding per named person, to recognize them in
-//! later recordings.
-//!
-//! An embedding is a vector a speaker-embedding model computes from a stretch
-//! of speech; two stretches of the same voice give vectors pointing the same
-//! way (high cosine similarity). No audio is stored. Embeddings are still
-//! biometric data: profiles are created only on the user's request, stay in a
-//! local file, and can be deleted per name.
+//! later recordings by cosine similarity. No audio is stored, but embeddings
+//! are biometric data: created only on request, local, deletable per name.
+//! See the crate README.
 
 use serde::{Deserialize, Serialize};
 
@@ -24,11 +20,14 @@ pub const MAX_SPEECH_MS: u64 = 30_000;
 
 /// Turns speech into a voice embedding.
 pub trait SpeakerEmbedder {
+    /// The embedding of all of `audio`, which should be one voice.
     fn embed(&mut self, audio: &Audio) -> Result<Vec<f32>, DiarizeError>;
 }
 
+/// The stored voice of one person.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VoiceProfile {
+    /// The person's name, as the user gave it.
     pub name: String,
     /// Manifest id of the embedding model; embeddings of different models
     /// cannot be compared.
@@ -39,9 +38,12 @@ pub struct VoiceProfile {
     pub recordings: u32,
 }
 
+/// All stored voices, as in the profiles JSON file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VoiceProfiles {
+    /// Layout version, [`FORMAT_VERSION`] when written by this build.
     pub version: u32,
+    /// One profile per name.
     #[serde(default)]
     pub profiles: Vec<VoiceProfile>,
 }
@@ -55,9 +57,12 @@ impl Default for VoiceProfiles {
     }
 }
 
+/// Why a profiles file could not be read.
 #[derive(Debug)]
 pub enum ProfilesError {
+    /// Not valid profiles JSON.
     Json(serde_json::Error),
+    /// Written by a newer Saywut with a layout this build does not know.
     UnsupportedVersion(u32),
 }
 
@@ -93,10 +98,12 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
 }
 
 impl VoiceProfiles {
+    /// Pretty-printed JSON for the profiles file.
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("profiles serialize")
     }
 
+    /// Reads a profiles file, refusing layouts newer than this build knows.
     pub fn from_json(json: &str) -> Result<Self, ProfilesError> {
         let profiles: Self = serde_json::from_str(json).map_err(ProfilesError::Json)?;
         if profiles.version > FORMAT_VERSION {

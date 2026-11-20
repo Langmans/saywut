@@ -1,12 +1,6 @@
-//! Diarization with sherpa-onnx: pyannote segmentation finds speech turns,
-//! a speaker-embedding model (CAM++) turns them into voice vectors, and
-//! clustering groups the vectors into speakers.
-//!
-//! The same embedding model, on its own, gives the voice embeddings of
-//! voice profiles ([`SherpaEmbedder`]).
-//!
-//! Both model files come from the manifest (`saywut-models`); this crate only
-//! loads the paths it is given.
+//! Diarization ([`SherpaDiarizer`]: pyannote segmentation, CAM++ embeddings,
+//! clustering) and voice embeddings for profiles ([`SherpaEmbedder`]) via
+//! sherpa-onnx. Model paths come from the manifest; see the README.
 
 use std::path::Path;
 
@@ -28,6 +22,7 @@ pub const SAMPLE_RATE: u32 = 16_000;
 /// not given: lower splits voices into more speakers. sherpa-onnx's default.
 pub const CLUSTER_THRESHOLD: f32 = 0.5;
 
+/// Loaded segmentation and embedding models.
 pub struct SherpaDiarizer {
     inner: Diarize,
 }
@@ -100,6 +95,7 @@ pub struct SherpaEmbedder {
 }
 
 impl SherpaEmbedder {
+    /// Loads a speaker-embedding model file.
     pub fn load(model: &Path) -> Result<Self, DiarizeError> {
         let config = ExtractorConfig {
             model: check_model(model)?.to_owned(),

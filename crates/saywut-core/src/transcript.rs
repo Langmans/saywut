@@ -19,7 +19,9 @@ pub struct SpeakerId(pub u32);
 /// them; exports then fall back to a localized label such as "Speaker 1".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Speaker {
+    /// Id, counted from 0; labels count from 1.
     pub id: SpeakerId,
+    /// Name the user gave, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
@@ -27,28 +29,39 @@ pub struct Speaker {
 /// One stretch of speech by at most one speaker.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Segment {
+    /// Start, in ms from the start of the recording.
     pub start_ms: u64,
+    /// End, in ms from the start of the recording.
     pub end_ms: u64,
+    /// Who speaks, once diarized.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<SpeakerId>,
+    /// What was said.
     pub text: String,
 }
 
+/// A whole transcript as stored in its JSON file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transcript {
+    /// Layout version, [`FORMAT_VERSION`] when written by this build.
     pub version: u32,
     /// BCP-47 tag of the spoken language, `None` when it was not detected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Every speaker that occurs, with their name if known.
     #[serde(default)]
     pub speakers: Vec<Speaker>,
+    /// The speech, in time order.
     #[serde(default)]
     pub segments: Vec<Segment>,
 }
 
+/// Why a transcript JSON could not be read.
 #[derive(Debug)]
 pub enum TranscriptError {
+    /// Not valid transcript JSON.
     Json(serde_json::Error),
+    /// Written by a newer Saywut with a layout this build does not know.
     UnsupportedVersion(u32),
 }
 
@@ -69,6 +82,7 @@ impl std::error::Error for TranscriptError {}
 /// Why a speaker edit was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditError {
+    /// No speaker with this id.
     UnknownSpeaker(SpeakerId),
     /// Merging a speaker into itself.
     SameSpeaker(SpeakerId),
@@ -97,6 +111,7 @@ impl Default for Transcript {
 }
 
 impl Transcript {
+    /// The speaker with this id, if listed.
     pub fn speaker(&self, id: SpeakerId) -> Option<&Speaker> {
         self.speakers.iter().find(|s| s.id == id)
     }
@@ -143,6 +158,7 @@ impl Transcript {
         serde_json::to_string_pretty(self).expect("transcript serializes")
     }
 
+    /// Reads a transcript, refusing layouts newer than this build knows.
     pub fn from_json(json: &str) -> Result<Self, TranscriptError> {
         let transcript: Self = serde_json::from_str(json).map_err(TranscriptError::Json)?;
         if transcript.version > FORMAT_VERSION {

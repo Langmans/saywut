@@ -1,3 +1,5 @@
+//! The `saywut` binary; everything runs in the library ([`saywut_cli::run`]).
+
 use std::process::ExitCode;
 
 fn main() -> ExitCode {

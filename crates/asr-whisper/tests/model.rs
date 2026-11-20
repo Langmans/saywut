@@ -1,11 +1,7 @@
-//! Tests against the real whisper-base model in the repository's `models/`
-//! (fetch it with `saywut models fetch whisper-base --model-dir models`) on
-//! the committed clips in `testdata/speech/`. A missing model fails the test
-//! on purpose: skipping would hide an untested engine.
-//!
-//! The tests run one at a time: each whisper run uses every core, and ggml's
-//! busy-waiting thread pools slow down by an order of magnitude when several
-//! compete for the same cores.
+//! Tests against the real whisper-base model in `models/` on the clips in
+//! `testdata/speech/`; a missing model fails them on purpose. They run one at
+//! a time: each whisper run uses every core, and ggml's busy-waiting thread
+//! pools slow down badly when several compete for them.
 
 use std::{
     path::{Path, PathBuf},
