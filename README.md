@@ -1,5 +1,11 @@
 # Saywut
 
+[![CI](https://github.com/Langmans/saywut/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Langmans/saywut/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust 1.100+](https://img.shields.io/badge/rust-1.100%2B-orange.svg)](Cargo.toml)
+[![Coverage 100%](https://img.shields.io/badge/coverage-100%25%20lines-brightgreen.svg)](.github/workflows/ci.yml)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
+
 Desktop app for live transcription with speaker diarization. It records from a
 microphone, an output device or a single application, shows the transcript as
 it is spoken next to a dB meter per source, and writes two files: the audio and
@@ -8,6 +14,55 @@ the transcript. An existing audio file can be transcribed as well.
 Languages: speech in Dutch, English and German; UI in the same three.
 
 Status: early. See [PLAN.md](PLAN.md) for the design and phases.
+
+## Architecture
+
+Ports and adapters: `saywut-core` holds the traits and all pure logic; every
+adapter is a thin crate behind one of those traits. Engines are to run in a
+worker process so a native crash cannot take the recording down; for now the
+CLI still runs them in-process. Dashed parts are planned.
+
+```mermaid
+flowchart LR
+    subgraph sources["Audio sources (AudioSource)"]
+        mic["capture-cpal<br/>microphone"]:::planned
+        loop["capture-wasapi / coreaudio / pipewire<br/>device + per-app loopback"]:::planned
+        file["capture-file<br/>WAV file"]
+        fake_src["capture-fake"]:::planned
+    end
+
+    subgraph app["Main process"]
+        core["saywut-core<br/>transcript model, pipeline,<br/>levels, export, WER"]
+        chunks["chunk writer<br/>audio to disk, always"]:::planned
+        i18n["saywut-i18n<br/>Fluent: en, nl, de"]
+        models["saywut-models<br/>models.toml, verified fetch"]
+    end
+
+    subgraph worker["Worker process (saywut-worker)"]
+        whisper["asr-whisper<br/>whisper.cpp"]
+        fake_asr["FakeAsr"]
+        diar["diarizer<br/>sherpa-onnx / sortformer"]:::planned
+    end
+
+    subgraph ui["Front ends"]
+        cli["saywut-cli"]
+        tauri["Tauri 2 app"]:::planned
+    end
+
+    out[("audio .opus/.flac<br/>transcript .json<br/>.srt .vtt .txt .md")]
+
+    sources --> core
+    core --> chunks
+    core <--> worker
+    models --> whisper
+    core --> out
+    cli --> core
+    tauri --> core
+    i18n --> cli
+    i18n --> tauri
+
+    classDef planned stroke-dasharray: 5 5
+```
 
 ## System requirements
 
@@ -35,6 +90,18 @@ Requirements on Windows: Rust (stable, msvc), Visual Studio C++ build tools,
 LLVM/Clang (`LIBCLANG_PATH` pointing at its `bin`) and CMake. For GPU builds
 also the Vulkan SDK (`VULKAN_SDK`) or the CUDA Toolkit (`CUDA_PATH`); users
 need neither.
+
+GPU builds select whisper.cpp's backend with a feature:
+
+```sh
+cargo build --release -p saywut-cli --features vulkan   # or: cuda
+```
+
+On Windows the Vulkan backend builds a nested CMake project whose paths pass
+the 260-character limit that `cl.exe` still has, even with long paths enabled
+in Windows (error C1083). Build from a short target directory, e.g. set
+`CARGO_TARGET_DIR` to `C:\Users\<you>\.sw\saywut` for your user. CI paths are
+short enough.
 
 ```sh
 cargo test --workspace

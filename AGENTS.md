@@ -36,7 +36,12 @@ cargo llvm-cov --workspace --fail-under-lines 100
   enforces this).
 - **No UI strings in the core.** The core takes labels from the caller.
 - **Malformed input never panics.** Audio files, transcript JSON and
-  anything from disk or the network return an error.
+  anything from disk or the network return an error. A new parser gets a
+  `cargo fuzz` target.
+- **The recording survives everything.** Nothing in the capture and chunk
+  writing path may depend on an engine; engines run in the worker process.
+  Logs never contain transcript text or audio. See "Reliability and crash
+  logging" in PLAN.md.
 - **Models are data.** A new model or model version is an edit to
   `models.toml`: a revision-pinned URL (never `main`), sha256, size, license,
   languages and WER/DER budgets. Never commit model files and never download

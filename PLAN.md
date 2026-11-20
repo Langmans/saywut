@@ -86,6 +86,8 @@ not a code change.
   when it is first loaded after a start, so a corrupted file is noticed.
 - **Never automatic**: the app downloads only when the user picks a model, and
   shows the size first. No background updates, no network access otherwise.
+  The one bundled model (see Distribution) is verified against the manifest
+  like any other.
 - **Provenance in the transcript**: the transcript JSON records the engine,
   model id and sha256 that produced it, so a result can be reproduced and an
   accuracy change traced to a model update. (An optional field, so format
@@ -106,6 +108,66 @@ not a code change.
     e.g. Common Voice); the Windows TTS clips cannot be made on Linux runners.
 - **Pruning**: files not referenced by the manifest are only removed by an
   explicit command (`saywut models prune`), never silently.
+
+## Slow machines
+
+Transcription and diarization may not keep up with real time on a machine
+without a usable GPU. Recording must never depend on that.
+
+- **Record first, always**: audio goes to disk in short chunks (e.g. 30 s
+  Opus/FLAC segments per track) as it comes in, independent of the engines. A
+  crash or a slow engine loses no audio; the chunks are joined on Stop.
+- **Measure, then choose a mode**: at start, run the engine on a few seconds
+  and take the real-time factor (processing time / audio time). Below ~0.5:
+  live. Between: live with a queue and a visible "n s behind" indicator. Above
+  1: record now, transcribe afterwards. The user can override.
+- **Live transcription is optional**: a toggle turns it off, leaving only the
+  dB meters while recording. On Stop, transcription and diarization run with
+  a progress bar (per phase: transcribing, diarizing) and a time estimate.
+- **Afterwards with progress**: queued chunks are processed in the background
+  with a progress bar and an estimate of the time left; the transcript fills
+  in as chunks finish. The queue survives closing the app and resumes.
+- **Less work per second**: voice activity detection skips silence; live can
+  use a small model (e.g. whisper-base) and the after-pass a larger one.
+- **Diarization in two steps**, as already planned: cheap provisional labels
+  live, the full pass after Stop as a background job with its own progress.
+
+## Reliability and crash logging
+
+The one thing that must survive any failure is the recording.
+
+- **Engines in a worker process**: ASR and diarization (C++ via whisper.cpp,
+  ONNX) run in a `saywut-worker` child process. A native crash there kills
+  only the worker; the app keeps recording, restarts it, and resumes from the
+  chunk queue (see Slow machines). Capture and the chunk writer stay in the
+  main process and are plain Rust.
+- **Recovery on start**: an unfinished session (chunks without a closed
+  transcript) is offered for recovery: join the chunks, transcribe what is
+  missing.
+- **Logs**: `tracing` to a rotating file in the user's log directory, a few
+  days kept. No transcript text and no audio in logs; they hold events,
+  timings, device names and errors.
+- **Panics**: a panic hook writes the message, backtrace, version and OS to a
+  crash file next to the logs, and the UI offers to open that folder on the
+  next start.
+- **Native crashes**: an out-of-process minidump handler (e.g. Embark's
+  `crash-handler` + `minidumper`) writes a minidump for the worker or the app.
+  Release builds keep their debug symbols outside the installer (`.pdb` on
+  Windows, `.dSYM` on macOS, split DWARF on Linux), attached to the GitHub
+  release, so a dump can be symbolicated afterwards.
+- **No automatic upload**: logs and dumps stay local. Sending one is the
+  user's choice, e.g. attaching it to an issue; a crash service would be
+  opt-in only.
+- **Failsafes in the data path**:
+  - Malformed input (audio, JSON, manifest) returns an error, never panics;
+    parsers get `cargo fuzz` targets, run in CI for a short time.
+  - Size limits on everything read whole (manifest, transcript JSON); audio is
+    streamed, not loaded at once.
+  - A capture device that disappears marks that source as lost; the other
+    tracks keep recording and the source reconnects when it returns.
+  - Free disk space is checked at start and while recording; when it runs
+    low, recording stops cleanly with every chunk finalized and the user is
+    told why.
 
 ## Distribution
 
@@ -135,9 +197,14 @@ only by CI, never on a developer machine:
 - **Linux**: AppImage (one file, runs on most distros) plus `.deb`; `.rpm` and
   Flatpak later. Per-app capture talks to PipeWire, which works outside a
   sandbox; Flatpak would need the PipeWire portal permissions.
-- **Not in the installer**: models. They are downloaded on first use after the
-  user picks one (see Models), which keeps installers small and the user in
-  control of what is downloaded.
+- **Models**: the installer carries only the smallest usable model (a quantized
+  whisper-base, about 60 MB), so the app works offline right after install.
+  Every other model is downloaded on demand when the user picks it (see
+  Models), with its size shown first.
+- **Model choice**: per model the UI shows size, languages and a speed
+  measured on this machine (a short trial run), and recommends one based on
+  the hardware found (e.g. a GPU: large-v3-turbo). Live and the after-pass can
+  use different models: a small fast one live, a larger one after Stop.
 - **GPU**: the default build carries the Vulkan backend (only the driver
   needed). CUDA, if offered, is a separate download of the extra runtime
   libraries, not part of every installer.
@@ -148,6 +215,19 @@ only by CI, never on a developer machine:
 
 1. Spike: compare whisper, parakeet and voxtral on own nl/en/de recordings (WER,
    speed on an RTX 3070 Laptop); check per-app capture of Opera GX.
+   - Candidates: whisper base, medium and large-v3-turbo (and a Dutch
+     fine-tune), Parakeet TDT 0.6B v3, Voxtral Mini Transcribe and Voxtral
+     Realtime (low delay, interesting for live), and Vosk (Kaldi, light and
+     truly streaming: a candidate for live on machines without a GPU, with a
+     larger model doing the after-pass). Cloud engines such as ElevenLabs
+     Scribe only if the open question on cloud APIs is answered yes.
+   - Data: Common Voice nl/en/de (CC0, read speech) and own recordings
+     (spontaneous speech). Published Dutch results show whisper doing clearly
+     worse on spontaneous broadcast speech than on Common Voice, so read speech
+     alone flatters every model.
+   - No independent Dutch comparison of these engines was found; Mistral's
+     Voxtral figures are its own.
+   - Backends per engine: CPU, Vulkan, CUDA (`tools/bench-whisper.sh`).
 2. Core and CLI: engine traits, file in, JSON/SRT out. i18n from the start.
 3. Diarization over a whole file, speaker renaming. 3b: names from speech and
    voice profiles.
@@ -164,6 +244,10 @@ only by CI, never on a developer machine:
   redistributable cuBLAS/cudart DLLs add hundreds of MB)? Measure both on the
   RTX 3070 Laptop in the spike. The CUDA toolkit or Vulkan SDK is only needed
   on the build machine, not by users.
+  First measurement (2026-11-20, whisper-base, release CLI incl. model load,
+  `tools/bench-whisper.sh`, real-time factor on the three TTS clips): CPU
+  0.22–0.62, Vulkan 0.04–0.08, CUDA 0.04–0.10, same text on all three. For a
+  small model the backends are equal; repeat with large-v3-turbo.
 
 ## Manual checks (need real hardware or accounts)
 
