@@ -37,6 +37,13 @@ cargo llvm-cov --workspace --fail-under-lines 100
 - **No UI strings in the core.** The core takes labels from the caller.
 - **Malformed input never panics.** Audio files, transcript JSON and
   anything from disk or the network return an error.
+- **Models are data.** A new model or model version is an edit to
+  `models.toml`: a revision-pinned URL (never `main`), sha256, size, license,
+  languages and WER/DER budgets. Never commit model files and never download
+  one without the user's consent. Before such a change is merged or
+  released, the regression clips must pass their budgets on every model in
+  the manifest; put the WER/DER before and after in the commit message. See
+  "Models" in PLAN.md.
 - **Comments explain how and why**, not history. What changed and why goes
   in the commit message or a note next to the code, not in source.
 - **English in the repo**: code, comments, docs, commit messages.
