@@ -3,6 +3,23 @@
 # Label for a speaker the user has not named yet. $n starts at 1.
 speaker-label = Spreker { $n }
 
+## Desktop app. Every app-* message goes to the frontend unformatted, so
+## these take no arguments.
+
+app-title = Saywut
+app-always-on-top = Bovenop
+app-start = Start
+app-stop = Stop
+app-status-live = Live
+app-status-stopped = Gestopt
+app-transcript-empty = Nog niets gezegd.
+# Accessible name of a source's level meter.
+app-level = Niveau
+app-source-microphone = Microfoon
+app-source-loopback = Systeemgeluid
+app-source-application = App
+app-source-file = Bestand
+
 error-read-audio = Kon audiobestand { $path } niet lezen: { $reason }
 error-read-script = Kon nepscript { $path } niet lezen: { $reason }
 error-write-output = Kon { $path } niet schrijven: { $reason }

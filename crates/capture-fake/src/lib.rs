@@ -123,7 +123,7 @@ impl FakeSession {
 
     /// Plays the timeline, waiting on `clock` before each event. When `emit`
     /// breaks, the replay ends early with a `Stopped` at that event's time.
-    pub fn run(&self, clock: &mut impl Clock, mut emit: impl FnMut(&LiveEvent) -> ControlFlow<()>) {
+    pub fn run(&self, clock: &mut dyn Clock, mut emit: impl FnMut(&LiveEvent) -> ControlFlow<()>) {
         for (at_ms, event) in &self.timeline {
             clock.wait_until(*at_ms);
             if emit(event).is_break() && !matches!(event, LiveEvent::Stopped { .. }) {

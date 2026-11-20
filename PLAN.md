@@ -271,6 +271,13 @@ Looked at for ideas, no code taken:
   (two male Microsoft voices merge into one speaker).
 - Voice profiles on real voices: does `transcribe --recognize` name the right
   people, and is `MATCH_THRESHOLD` (0.6) right for CAM++ on real speech?
+- Desktop app against the fake session (`npm run tauri dev` in
+  `crates/saywut-app`): the panel looks right next to a browser at its narrow
+  width; "On top" keeps it above a focused window; the meter moves with the
+  speech; partial lines are italic and become final; light and dark follow
+  the OS setting, also when it changes while the app runs; nl and de via
+  `SAYWUT_LANG`. On Windows, macOS and Linux.
+- The app opening its window (`saywut-app/src/main.rs`, outside coverage).
 
 ## Open work
 
@@ -287,3 +294,4 @@ suggestions, voice profiles). Before phase 4:
   `cargo llvm-cov`; find out why.
 - The scratch-dir test helper is duplicated in three crates (`tempfile`).
 - Measure whisper large-v3-turbo next to base (download on approval).
+- Desktop app: a manual light/dark override next to following the OS.

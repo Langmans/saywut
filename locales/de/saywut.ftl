@@ -3,6 +3,23 @@
 # Label for a speaker the user has not named yet. $n starts at 1.
 speaker-label = Sprecher { $n }
 
+## Desktop app. Every app-* message goes to the frontend unformatted, so
+## these take no arguments.
+
+app-title = Saywut
+app-always-on-top = Im Vordergrund
+app-start = Start
+app-stop = Stopp
+app-status-live = Live
+app-status-stopped = Gestoppt
+app-transcript-empty = Noch nichts gesagt.
+# Accessible name of a source's level meter.
+app-level = Pegel
+app-source-microphone = Mikrofon
+app-source-loopback = Systemton
+app-source-application = App
+app-source-file = Datei
+
 error-read-audio = Audiodatei { $path } konnte nicht gelesen werden: { $reason }
 error-read-script = Testskript { $path } konnte nicht gelesen werden: { $reason }
 error-write-output = { $path } konnte nicht geschrieben werden: { $reason }

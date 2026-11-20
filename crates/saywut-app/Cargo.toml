@@ -1,0 +1,35 @@
+[package]
+name = "saywut-app"
+description = "Saywut desktop app (Tauri 2)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# main.rs only opens the window, which needs a real desktop. Not building it
+# as a test target keeps it out of coverage; lib.rs holds what it calls.
+[[bin]]
+name = "saywut-app"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+saywut-capture-fake = { path = "../capture-fake" }
+saywut-core = { path = "../saywut-core" }
+saywut-i18n = { path = "../saywut-i18n" }
+serde = { version = "1.0.229", features = ["derive"] }
+sys-locale = "0.3.2"
+tauri = { version = "2.12.7", features = [] }
+
+[dev-dependencies]
+hound = "3.5.1"
+serde_json = "1.0.154"
+tauri = { version = "2.12.7", features = ["test"] }
+
+[build-dependencies]
+tauri-build = { version = "2.7.6", features = [] }
+
+[lints]
+workspace = true

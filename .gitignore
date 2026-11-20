@@ -3,3 +3,7 @@
 /testdata/tts
 *.profraw
 lcov.info
+node_modules/
+/crates/saywut-app/dist
+/crates/saywut-app/coverage
+/crates/saywut-app/gen

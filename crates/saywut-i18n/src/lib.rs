@@ -1,7 +1,8 @@
-//! UI strings from the Fluent files under `locales/`, which the Tauri
-//! frontend will read as well.
+//! UI strings from the Fluent files under `locales/`, for the CLI and for the
+//! desktop app, which hands the `app-*` messages to its frontend.
 
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
+use fluent_syntax::ast::Entry;
 use unic_langid::LanguageIdentifier;
 
 pub use fluent_bundle::FluentValue;
@@ -37,8 +38,21 @@ pub fn negotiate(requested: &str) -> &'static str {
     same_language.unwrap_or(FALLBACK)
 }
 
+/// Ids of the messages in `resource`; terms (`-name`) are only usable inside
+/// messages, so they are left out.
+fn message_ids(resource: &FluentResource) -> Vec<String> {
+    resource
+        .entries()
+        .filter_map(|entry| match entry {
+            Entry::Message(m) => Some(m.id.name.to_owned()),
+            _ => None,
+        })
+        .collect()
+}
+
 pub struct Localizer {
     tag: &'static str,
+    ids: Vec<String>,
     bundle: FluentBundle<FluentResource>,
 }
 
@@ -46,18 +60,25 @@ impl Localizer {
     pub fn new(requested: &str) -> Self {
         let tag = negotiate(requested);
         let source = LOCALES.iter().find(|(t, _)| *t == tag).unwrap().1;
+        let resource = FluentResource::try_new(source.to_owned()).expect("valid .ftl");
+        let ids = message_ids(&resource);
         let mut bundle = FluentBundle::new(vec![tag.parse().unwrap()]);
         // Unicode bidi isolation marks around placeables only confuse plain
         // terminal and file output; the frontend can isolate in markup.
         bundle.set_use_isolating(false);
         bundle
-            .add_resource(FluentResource::try_new(source.to_owned()).expect("valid .ftl"))
+            .add_resource(resource)
             .expect("no duplicate messages");
-        Self { tag, bundle }
+        Self { tag, ids, bundle }
     }
 
     pub fn tag(&self) -> &'static str {
         self.tag
+    }
+
+    /// Ids of all messages in this locale, in file order.
+    pub fn ids(&self) -> impl Iterator<Item = &str> {
+        self.ids.iter().map(String::as_str)
     }
 
     /// The formatted message, or `id` itself when the message is missing, so
@@ -80,19 +101,12 @@ impl Localizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_syntax::{ast::Entry, parser};
     use std::collections::BTreeSet;
 
-    fn message_ids(source: &str) -> BTreeSet<String> {
-        let resource = parser::parse(source).expect("locale parses without errors");
-        resource
-            .body
-            .into_iter()
-            .filter_map(|entry| match entry {
-                Entry::Message(m) => Some(m.id.name.to_owned()),
-                _ => None,
-            })
-            .collect()
+    fn ids_in(source: &str) -> BTreeSet<String> {
+        let resource =
+            FluentResource::try_new(source.to_owned()).expect("locale parses without errors");
+        message_ids(&resource).into_iter().collect()
     }
 
     #[test]
@@ -102,9 +116,9 @@ mod tests {
 
     #[test]
     fn every_locale_has_exactly_the_fallback_keys() {
-        let reference = message_ids(LOCALES.iter().find(|(t, _)| *t == FALLBACK).unwrap().1);
+        let reference = ids_in(LOCALES.iter().find(|(t, _)| *t == FALLBACK).unwrap().1);
         for (tag, source) in LOCALES {
-            assert_eq!(message_ids(source), reference, "keys differ in {tag}");
+            assert_eq!(ids_in(source), reference, "keys differ in {tag}");
         }
     }
 
@@ -126,6 +140,25 @@ mod tests {
         assert_eq!(
             Localizer::new("de").message("speaker-label", &[("n", 1.into())]),
             "Sprecher 1"
+        );
+    }
+
+    #[test]
+    fn lists_message_ids_in_file_order() {
+        let en = Localizer::new("en");
+        let ids: Vec<&str> = en.ids().collect();
+        assert_eq!(ids[0], "speaker-label");
+        assert_eq!(
+            ids.into_iter().map(str::to_owned).collect::<BTreeSet<_>>(),
+            ids_in(LOCALES.iter().find(|(t, _)| *t == "en").unwrap().1)
+        );
+    }
+
+    #[test]
+    fn terms_and_comments_are_not_messages() {
+        assert_eq!(
+            ids_in("# note\n-brand = Saywut\nhello = Hi { -brand }\n"),
+            BTreeSet::from(["hello".to_owned()])
         );
     }
 

@@ -1,0 +1,65 @@
+/* Theme tokens. Light and dark follow the OS through prefers-color-scheme. */
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --text: #1c1c1f;
+  --muted: #6b6b75;
+  --border: #e2e2e7;
+  --accent: #2563eb;
+  --live: #16a34a;
+  --error: #b91c1c;
+  --meter-bg: #e7e7ec;
+  --meter-low: #22c55e;
+  --meter-mid: #eab308;
+  --meter-high: #ef4444;
+  /* One colour per speaker, reused beyond six. */
+  --s0: #2563eb;
+  --s1: #c026d3;
+  --s2: #0d9488;
+  --s3: #ea580c;
+  --s4: #7c3aed;
+  --s5: #be123c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151518;
+    --panel: #1d1d21;
+    --text: #e9e9ee;
+    --muted: #9a9aa6;
+    --border: #2e2e35;
+    --accent: #60a5fa;
+    --live: #4ade80;
+    --error: #f87171;
+    --meter-bg: #2a2a31;
+    --s0: #60a5fa;
+    --s1: #e879f9;
+    --s2: #2dd4bf;
+    --s3: #fb923c;
+    --s4: #a78bfa;
+    --s5: #fb7185;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}

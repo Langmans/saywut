@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Saywut",
+  "identifier": "io.github.langmans.saywut",
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "dist",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Saywut",
+        "width": 380,
+        "height": 720,
+        "minWidth": 300,
+        "minHeight": 320
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.png", "icons/icon.ico"]
+  }
+}

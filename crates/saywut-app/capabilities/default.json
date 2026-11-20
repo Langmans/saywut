@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the main window may call: Tauri's core defaults (events, window basics) and the app's own commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -16,6 +16,15 @@ design and phases; [README.md](README.md) has build requirements.
   core traits.
 - `crates/saywut-cli`: the `saywut` binary. Keep `main.rs` a one-liner and
   put logic in `lib.rs` so it can be tested.
+- `crates/saywut-app`: the Tauri 2 desktop app. Rust in `src/`, the Vue 3 +
+  TypeScript frontend in `ui/src/` (Vite, one component per piece of UI,
+  each with a `*.spec.ts` next to it). UI strings are the `app-*` Fluent
+  messages, which Rust hands to the frontend. `main.rs` only opens the
+  window, which tests cannot do, so the binary is built with `test = false`
+  and stays out of coverage; everything it calls lives in `lib.rs` and is
+  tested with Tauri's mock runtime. Run it from `crates/saywut-app` with
+  `npm install` once, then `npm run tauri dev` (a clip other than
+  `en-dialogue`: `npm run tauri dev -- -- path/to/clip.wav`).
 - `tools/`: helper scripts (e.g. `tts-clips.ps1` for synthetic test audio).
 
 ## Checks
@@ -27,6 +36,13 @@ and Linux:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo llvm-cov --workspace --fail-under-lines 100
+```
+
+And for the frontend, in `crates/saywut-app` (CI runs these on Linux):
+
+```sh
+npm run typecheck
+npm run coverage   # Vitest; fails below 100% lines, branches and functions
 ```
 
 ## Rules
