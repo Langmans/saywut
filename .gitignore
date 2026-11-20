@@ -1,4 +1,5 @@
 /target
 /models
+/testdata/tts
 *.profraw
 lcov.info

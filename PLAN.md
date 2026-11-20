@@ -87,3 +87,6 @@ Spec first: a failing test, then the code (red, green).
   processes).
 - Core Audio tap permission flow on macOS.
 - Accuracy on own nl/en/de recordings for the spike.
+- Install a German voice and a second Dutch voice (Settings > Time & language >
+  Speech), so `tools/tts-clips.ps1` can also make `de` clips and a Dutch
+  dialogue.
